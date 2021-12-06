@@ -21,7 +21,7 @@ namespace Enderlook.Pools
         /// This value is not accurate and may be lower or higher than the actual count.<br/>
         /// This is primary used for debugging purposes.
         /// </summary>
-        /// <returns>Approximate count of elements in the pool.</returns>
+        /// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
         public abstract int ApproximateCount();
 
         /// <summary>
@@ -34,7 +34,8 @@ namespace Enderlook.Pools
         /// <summary>
         /// Return an element to the pool.<br/>
         /// If the pool is full, it's an implementation detail whenever the object is free or the pool is resized.<br/>
-        /// If <paramref name="obj"/> is <see langword="null"/>, it's an implementation detail whenever it throws an exception or ignores.
+        /// If <paramref name="obj"/> is <see langword="null"/>, it's an implementation detail whenever it throws an exception or ignores the call.<br/>
+        /// However, it should never fail silently.
         /// </summary>
         public abstract void Return(T obj);
 

@@ -394,6 +394,8 @@ namespace Enderlook.Pools
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void SendToReserve(T obj)
         {
+            if (obj is null) return;
+
             ObjectWrapper<T?>[] items = array;
             ObjectWrapper<T?>[]? reserve_;
             do
