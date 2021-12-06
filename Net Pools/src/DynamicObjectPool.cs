@@ -189,7 +189,10 @@ namespace Enderlook.Pools
             const int ReserveLowTrimAfterMilliseconds = 90 * 1000; // Trim after 90 seconds for low pressure.
             const int ReserveMediumTrimAfterMilliseconds = 45 * 1000; // Trim after 45 seconds for low pressure.
             const float ReserveLowTrimPercentage = .10f; // Trim 10% of objects for low pressure;
-            const float ReserveMediumTrimPercentage = .30f; // Trim 30% of objects for moderate pressure;
+            const float ReserveMediumTrimPercentage = .30f; // Trim 30% of objects for moderate pressure.
+
+            const int ReserveShrinkFactorToStart = 4; // Reserve must be using a quarter of its capacity to shrink.
+            const int ReserveShrinkFactor = 2; // Shrink reserve by half of its length.
 
             int currentMilliseconds = Environment.TickCount;
 
@@ -263,7 +266,6 @@ namespace Enderlook.Pools
                 }
                 else
                 {
-                    firstElement = null;
 #if NET6_0_OR_GREATER
                     Array.Clear(items);
 #else
@@ -329,18 +331,18 @@ namespace Enderlook.Pools
                         reserveCount_ = newReserveCount;
 
                         // Since the global reserve has a dynamic size, we shrink the reserve if it gets too small.
-                        if (reserveLength / reserveCount_ >= 4)
+
+                        if (reserveLength / reserveCount_ >= ReserveShrinkFactorToStart)
                         {
                             if (reserveLength <= items.Length)
                                 goto simpleClean;
-                            else
-                            {
-                                int newLength = Math.Min(reserveLength / 2, items.Length);
-                                ObjectWrapper<T?>[] array = new ObjectWrapper<T?>[newLength];
-                                Array.Copy(reserve_, array, newReserveCount);
-                                reserve_ = array;
-                                goto next2;
-                            }
+
+                            Debug.Assert(ReserveShrinkFactorToStart >= ReserveShrinkFactor);
+                            int newLength = Math.Min(reserveLength / ReserveShrinkFactor, items.Length);
+                            ObjectWrapper<T?>[] array = new ObjectWrapper<T?>[newLength];
+                            Array.Copy(reserve_, array, newReserveCount);
+                            reserve_ = array;
+                            goto next2;
                         }
                         simpleClean:
                         Array.Clear(reserve_, newReserveCount, toRemove);
