@@ -154,7 +154,7 @@ namespace Enderlook.Pools
         /// <param name="obj">Object to return.</param>
         public override void Return(T obj)
         {
-            // Intentionally not using interlocked here. 
+            // Intentionally not using interlocked here.
             // In a worst case scenario two objects may be stored into same slot.
             // It is very unlikely to happen and will only mean that one of the objects will get collected.
             if (firstElement is null)

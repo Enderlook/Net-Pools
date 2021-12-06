@@ -112,7 +112,7 @@ namespace Enderlook.Pools
             => throw new ArgumentOutOfRangeException("initialColdCapacity", "Can't be negative.");
 
         public static void ThrowArgumentOutOfRangeException_InitialCapacityCanNotBeNegative()
-            => throw new ArgumentOutOfRangeException("initialCapacity","Can't be negative.");
+            => throw new ArgumentOutOfRangeException("initialCapacity", "Can't be negative.");
 
         public static void ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne()
             => throw new ArgumentOutOfRangeException("hotCapacity", "Can't be lower than 1.");
