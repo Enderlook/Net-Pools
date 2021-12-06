@@ -586,13 +586,13 @@ namespace Enderlook.Pools
 
                     ObjectWrapper<T?>[] items = array;
 
-                    int length = Math.Min(MaxObjectsPerCore - count, globalCount);
+                    int length = Math.Min(MaxObjectsPerCore - count_, globalCount);
                     int start = globalCount - length;
-                    Array.Copy(globalReserve_, start, items, count, length);
+                    Array.Copy(globalReserve_, start, items, count_, length);
                     Array.Clear(globalReserve_, start, length);
 
                     globalCount = start;
-                    count += length;
+                    count_ += length;
 
                     globalReserveCount = globalCount;
                 }
