@@ -7,7 +7,7 @@ using System.Threading;
 namespace Enderlook.Pools
 {
     /// <summary>
-    /// A lightweight, fast and thread-safe object pool to store objects.<br/>
+    /// A lightweight, fast, dynamically-sized and thread-safe object pool to store objects.<br/>
     /// The pool is desinged for fast rent and return of element, so during multithreading scenarios it may accidentally free unnecessary objects during return (however, this is not a fatal error).
     /// </summary>
     /// <typeparam name="T">Type of object to pool</typeparam>
@@ -64,7 +64,7 @@ namespace Enderlook.Pools
         /// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.</param>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
         /// If no delegate is provided, a factory with the default constructor of <typeparamref name="T"/> will be used.</param>
-        /// /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
         public DynamicObjectPool(int hotCapacity, int initialColdCapacity, Func<T>? factory)
         {
             if (hotCapacity < 1) Utilities.ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne();
@@ -148,8 +148,7 @@ namespace Enderlook.Pools
         }
 
         /// <summary>
-        /// Return rented object to pool.<br/>
-        /// If the pool is full, the object will be discarded.
+        /// Return rented object to pool.
         /// </summary>
         /// <param name="obj">Object to return.</param>
         public override void Return(T obj)
