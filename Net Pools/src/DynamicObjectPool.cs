@@ -73,6 +73,8 @@ namespace Enderlook.Pools
             this.factory = factory ?? ObjectPoolHelper<T>.Factory;
             array = new ObjectWrapper<T?>[hotCapacity - 1]; // -1 due to firstElement.
             reserve = new ObjectWrapper<T?>[initialColdCapacity];
+
+            GCCallback _ = new GCCallback(this);
         }
 
         /// <summary>
