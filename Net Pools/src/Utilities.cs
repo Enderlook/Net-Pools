@@ -14,10 +14,13 @@ namespace Enderlook.Pools
         public const int SystemReflectionEmitDynamicMethod = 2;
         public static readonly int DynamicCompilationMode;
 
+        public static readonly bool SupportMultithreading;
+
         static Utilities()
         {
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
+            SupportMultithreading = true;
 
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
             // Check if we are in AOT.
             // We can't just try to compile code dynamically and try/catch an exception because the runtime explodes instead of throwing in Unity WebGL.
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
@@ -37,7 +40,12 @@ namespace Enderlook.Pools
                         goto isDisabled;
 
                     if (platformProperty.GetValue(null)!.ToString() == "WebGLPlayer" && !(bool)isEditorProperty.GetValue(null)!)
+                    {
+                        // Since we also know that this platform doesn't support multithreading,
+                        // and so never two threads will access the same pool, we can optimize the ObjectPool<T>.Shared instance.
+                        SupportMultithreading = false;
                         goto isDisabled;
+                    }
                 }
             }
 

@@ -11,9 +11,17 @@ namespace Enderlook.Pools
         /// <summary>
         /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.
         /// </summary>
-        public static ObjectPool<T> Shared {
+        public static ObjectPool<T> Shared
+        {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ThreadLocalOverPerCoreLockedStacksObjectPool<T>.Singlenton;
+            get
+            {
+                // In some platforms such as Unity WebGL multithreading is not supported so we use a single threaded class
+                // since we don't require syncronization of threads.
+                if (Utilities.SupportMultithreading)
+                    return ThreadLocalOverPerCoreLockedStacksObjectPool<T>.Singlenton;
+                return SingleThreadDynamicObjectPool<T>.Singlenton;
+            }
         }
 
         /// <summary>
