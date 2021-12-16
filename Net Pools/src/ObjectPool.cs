@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools
 {
@@ -6,14 +7,22 @@ namespace Enderlook.Pools
     /// Represent a pool of objects.
     /// </summary>
     /// <typeparam name="T">Type of object to pool</typeparam>
-    public abstract class ObjectPool<T> where T : class
+    public abstract class ObjectPool<T>
     {
+        private static class Container
+        {
+            public static readonly ObjectPool<T> shared = (ObjectPool<T>)Activator.CreateInstance(typeof(T).IsValueType ?
+                typeof(ThreadLocalOverPerCoreLockedStacksValueObjectPool<>)
+                : typeof(ThreadLocalOverPerCoreLockedStacksObjectPool<>)
+                .MakeGenericType(typeof(T)))!;
+        }
+
         /// <summary>
         /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.
         /// </summary>
         public static ObjectPool<T> Shared {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ThreadLocalOverPerCoreLockedStacksObjectPool<T>.Singlenton;
+            get => Container.shared;
         }
 
         /// <summary>
@@ -34,8 +43,8 @@ namespace Enderlook.Pools
         /// <summary>
         /// Return an element to the pool.<br/>
         /// If the pool is full, it's an implementation detail whenever the object is free or the pool is resized.<br/>
-        /// If <paramref name="obj"/> is <see langword="null"/>, it's an implementation detail whenever it throws an exception or ignores the call.<br/>
-        /// However, it should never fail silently.
+        /// If <paramref name="obj"/> is <see langword="default"/>, it's an implementation detail whenever it throws an exception or ignores the call.<br/>
+        /// However, it should never leave the pool in an invalid state.
         /// </summary>
         public abstract void Return(T obj);
 

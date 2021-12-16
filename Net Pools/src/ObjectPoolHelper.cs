@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools
 {
-    internal static class ObjectPoolHelper<T> where T : class
+    internal static class ObjectPoolHelper<T>
     {
         public static readonly Func<T> Factory;
 

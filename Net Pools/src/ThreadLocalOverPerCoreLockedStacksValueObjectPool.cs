@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -10,7 +11,7 @@ namespace Enderlook.Pools
     /// A fast and thread-safe object pool to store a large amount of objects.
     /// </summary>
     /// <typeparam name="T">Type of object to pool</typeparam>
-    internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<T> : ObjectPool<T> where T : class
+    internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<T> : ObjectPool<T> where T : struct
     {
         // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
@@ -62,7 +63,7 @@ namespace Enderlook.Pools
         /// When all <see cref="perCoreStacks"/> get empty, one of them is fulled with objects from this reserve.<br/>
         /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.
         /// </summary>
-        private static ObjectWrapper<T?>[]? globalReserve = new ObjectWrapper<T?>[MaxObjectsPerCore];
+        private static T[]? globalReserve = new T[MaxObjectsPerCore];
 
         /// <summary>
         /// Keep tracks of the amount of used slots in <see cref="globalReserve"/>.
@@ -74,10 +75,10 @@ namespace Enderlook.Pools
         /// </summary>
         private static int globalReserveMillisecondsTimeStamp;
 
-        static ThreadLocalOverPerCoreLockedStacksObjectPool()
+        static ThreadLocalOverPerCoreLockedStacksValueObjectPool()
         {
             for (int i = 0; i < perCoreStacks.Length; i++)
-                perCoreStacks[i] = new PerCoreStack(new ObjectWrapper<T?>[MaxObjectsPerCore]);
+                perCoreStacks[i] = new PerCoreStack(new T[MaxObjectsPerCore]);
             GCCallback _ = new();
         }
 
@@ -88,7 +89,7 @@ namespace Enderlook.Pools
             for (int i = 0; i < perCoreStacks.Length; i++)
                 count += perCoreStacks[i].GetCount();
 
-            ObjectWrapper<T?>[]? globalReserve_;
+            T[]? globalReserve_;
             do
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -107,10 +108,10 @@ namespace Enderlook.Pools
             if (threadLocalElement_ is not null)
             {
                 T? element = threadLocalElement_.Value;
-                if (element is not null)
+                if (element is T element_)
                 {
                     threadLocalElement_.Value = null;
-                    return element;
+                    return element_;
                 }
             }
 
@@ -126,8 +127,7 @@ namespace Enderlook.Pools
             int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
             for (int i = 0; i < perCoreStacks_.Length; i++)
             {
-                T? element = perCoreStacks_[index].TryPop();
-                if (element is not null)
+                if (perCoreStacks[index].TryPop(out T element))
                     return element;
 
                 if (++index == perCoreStacks_.Length)
@@ -144,8 +144,7 @@ namespace Enderlook.Pools
             [MethodImpl(MethodImplOptions.NoInlining)]
             T FillFromGlobalReserve()
             {
-                T? element = perCoreStacks_[index].FillFromGlobalReserve();
-                if (element is not null)
+                if (perCoreStacks_[index].FillFromGlobalReserve(out T element))
                     return element;
                 // Finally, instantiate a new object.
                 return ObjectPoolHelper<T>.Create();
@@ -154,18 +153,19 @@ namespace Enderlook.Pools
 
         /// <summary>
         /// Return rented object to pool.<br/>
-        /// If the pool is full, the object will be discarded.
+        /// If the pool is full, the object will be discarded.<br/>
+        /// Default instances are discarded.
         /// </summary>
         /// <param name="obj">Object to return.</param>
         public override void Return(T obj)
         {
-            if (obj is null) Utilities.ThrowArgumentNullException_Obj();
-            Debug.Assert(obj is not null);
+            if (EqualityComparer<T>.Default.Equals(obj, default))
+                return;
 
             // Store the element into the thread local field.
             // If there's already an object in it, push that object down into the per-core stacks,
             // preferring to keep the latest one in thread local field for better locality.
-            ThreadLocalElement threadLocalElement_ = threadLocalElement ?? ThreadLocalOverPerCoreLockedStacksObjectPool<T>.InitializeThreadLocalElement();
+            ThreadLocalElement threadLocalElement_ = threadLocalElement ?? ThreadLocalOverPerCoreLockedStacksValueObjectPool<T>.InitializeThreadLocalElement();
             T? previous = threadLocalElement_.Value;
             threadLocalElement_.Value = obj;
             threadLocalElement_.MillisecondsTimeStamp = 0;
@@ -327,7 +327,7 @@ namespace Enderlook.Pools
             allThreadLocalElementsCount = count;
             allThreadLocalElements = allThreadLocalElements_;
 
-            ObjectWrapper<T?>[]? globalReserve_;
+            T[]? globalReserve_;
             do
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -352,7 +352,7 @@ namespace Enderlook.Pools
 #endif
                     }
                     else
-                        globalReserve_ = new ObjectWrapper<T?>[InitialGlobalReserveCapacity];
+                        globalReserve_ = new T[InitialGlobalReserveCapacity];
                     globalReserveMillisecondsTimeStamp = 0;
                 }
                 else
@@ -380,7 +380,7 @@ namespace Enderlook.Pools
                             else
                             {
                                 int newLength = globalLength / 2;
-                                ObjectWrapper<T?>[] array = new ObjectWrapper<T?>[newLength];
+                                T[] array = new T[newLength];
                                 Array.Copy(globalReserve_, array, newGlobalCount);
                                 globalReserve_ = array;
                                 goto next;
@@ -478,11 +478,11 @@ namespace Enderlook.Pools
 
         private struct PerCoreStack
         {
-            private ObjectWrapper<T?>[] array;
+            private T[] array;
             private int count;
             private int millisecondsTimeStamp;
 
-            public PerCoreStack(ObjectWrapper<T?>[] array)
+            public PerCoreStack(T[] array)
             {
                 this.array = array;
                 count = 0;
@@ -503,7 +503,7 @@ namespace Enderlook.Pools
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPush(T element)
             {
-                ObjectWrapper<T?>[] items = array;
+                T[] items = array;
 
                 int count_;
                 do
@@ -521,8 +521,7 @@ namespace Enderlook.Pools
                         millisecondsTimeStamp = 0;
                     }
 
-                    items[count_].Value = element;
-                    count_++;
+                    items[count_++] = element;
                     enqueued = true;
                 }
 
@@ -531,9 +530,9 @@ namespace Enderlook.Pools
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public T? TryPop()
+            public bool TryPop(out T element)
             {
-                ObjectWrapper<T?>[] items = array;
+                T[] items = array;
 
                 int count_;
                 do
@@ -541,20 +540,26 @@ namespace Enderlook.Pools
                     count_ = Interlocked.Exchange(ref count, -1);
                 } while (count_ == -1);
 
-                T? element = null;
                 int newCount = count_ - 1;
                 if (unchecked((uint)newCount < (uint)items.Length))
                 {
-                    element = items[newCount].Value;
-                    count_ = newCount;
+                    ref T reference = ref items[newCount];
+                    element = reference;
+                    reference = default;
+                    count = newCount;
+                    return true;
                 }
 
-                count = count_;
-                return element;
+#if NET5_0_OR_GREATER
+                Unsafe.SkipInit(out element);
+#else
+                element = default;
+#endif
+                return false;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public T? FillFromGlobalReserve()
+            public bool FillFromGlobalReserve(out T element)
             {
                 int count_;
                 do
@@ -562,20 +567,20 @@ namespace Enderlook.Pools
                     count_ = Interlocked.Exchange(ref count, -1);
                 } while (count_ == -1);
 
-                ObjectWrapper<T?>[]? globalReserve_;
+                T[]? globalReserve_;
                 do
                 {
                     globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
                 } while (globalReserve_ is null);
 
-                T? element = null;
                 int globalCount = globalReserveCount;
+                bool found;
                 if (globalCount > 0)
                 {
-                    element = globalReserve_[--globalCount].Value;
-                    Debug.Assert(element is not null);
+                    element = globalReserve_[--globalCount];
+                    found = true;
 
-                    ObjectWrapper<T?>[] items = array;
+                    T[] items = array;
 
                     int length = Math.Min(MaxObjectsPerCore - count_, globalCount);
                     int start = globalCount - length;
@@ -587,10 +592,19 @@ namespace Enderlook.Pools
 
                     globalReserveCount = globalCount;
                 }
+                else
+                {
+                    found = false;
+#if NET5_0_OR_GREATER
+                    Unsafe.SkipInit(out element);
+#else
+                    element = default;
+#endif
+                }
 
                 globalReserve = globalReserve_;
                 count = count_;
-                return element;
+                return found;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -602,13 +616,13 @@ namespace Enderlook.Pools
                     count_ = Interlocked.Exchange(ref count, -1);
                 } while (count_ == -1);
 
-                ObjectWrapper<T?>[]? globalReserve_;
+                T[]? globalReserve_;
                 do
                 {
                     globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
                 } while (globalReserve_ is null);
 
-                ObjectWrapper<T?>[] items = array;
+                T[] items = array;
                 int amount = count_ + 1;
                 int globalCount = globalReserveCount;
                 int newGlobalCount = globalCount + amount;
@@ -622,7 +636,7 @@ namespace Enderlook.Pools
 #endif
                 globalCount += count_;
                 count_ = 0;
-                globalReserve_[globalCount++].Value = obj;
+                globalReserve_[globalCount++] = obj;
 
                 globalReserveCount = globalCount;
                 globalReserve = globalReserve_;
@@ -635,7 +649,7 @@ namespace Enderlook.Pools
                 if (count == 0)
                     return;
 
-                ObjectWrapper<T?>[] items = array;
+                T[] items = array;
 
                 int count_;
                 do
@@ -671,7 +685,7 @@ namespace Enderlook.Pools
         {
             ~GCCallback()
             {
-                ThreadLocalOverPerCoreLockedStacksObjectPool<T>.Trim_();
+                ThreadLocalOverPerCoreLockedStacksValueObjectPool<T>.Trim_();
                 GC.ReRegisterForFinalize(this);
             }
         }
