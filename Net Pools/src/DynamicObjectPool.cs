@@ -152,14 +152,14 @@ namespace Enderlook.Pools
         /// <summary>
         /// Return rented object to pool.
         /// </summary>
-        /// <param name="obj">Object to return.</param>
-        public override void Return(T obj)
+        /// <param name="element">Object to return.</param>
+        public override void Return(T element)
         {
             // Intentionally not using interlocked here.
             // In a worst case scenario two objects may be stored into same slot.
             // It is very unlikely to happen and will only mean that one of the objects will get collected.
             if (firstElement is null)
-                firstElement = obj;
+                firstElement = element;
             else
             {
                 ObjectWrapper<T?>[] items = array;
@@ -170,12 +170,12 @@ namespace Enderlook.Pools
                         // Intentionally not using interlocked here.
                         // In a worst case scenario two objects may be stored into same slot.
                         // It is very unlikely to happen and will only mean that one of the objects will get collected.
-                        items[i].Value = obj;
+                        items[i].Value = element;
                         return;
                     }
                 }
 
-                SendToReserve(obj);
+                SendToReserve(element);
             }
         }
 

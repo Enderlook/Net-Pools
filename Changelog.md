@@ -13,3 +13,5 @@ Initial release.
 ##
 - Remove `class` constraint in generic parameter `T` in `ObjectPool<T>`.
 - Add `DynamicValueObjectPool<T>`. 
+- Improve documentation of `ObjectPool<T>`.
+- Rename parameter `obj` to `element` of `ObjectPool<T>.Return(T obj)`.

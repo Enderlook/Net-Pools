@@ -156,18 +156,18 @@ namespace Enderlook.Pools
         /// Return rented object to pool.<br/>
         /// If the pool is full, the object will be discarded.
         /// </summary>
-        /// <param name="obj">Object to return.</param>
-        public override void Return(T obj)
+        /// <param name="element">Object to return.</param>
+        public override void Return(T element)
         {
-            if (obj is null) Utilities.ThrowArgumentNullException_Obj();
-            Debug.Assert(obj is not null);
+            if (element is null) Utilities.ThrowArgumentNullException_Obj();
+            Debug.Assert(element is not null);
 
             // Store the element into the thread local field.
             // If there's already an object in it, push that object down into the per-core stacks,
             // preferring to keep the latest one in thread local field for better locality.
             ThreadLocalElement threadLocalElement_ = threadLocalElement ?? ThreadLocalOverPerCoreLockedStacksObjectPool<T>.InitializeThreadLocalElement();
             T? previous = threadLocalElement_.Value;
-            threadLocalElement_.Value = obj;
+            threadLocalElement_.Value = element;
             threadLocalElement_.MillisecondsTimeStamp = 0;
             if (previous is not null)
             {
@@ -183,7 +183,7 @@ namespace Enderlook.Pools
                 int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
                 for (int i = 0; i < perCoreStacks_.Length; i++)
                 {
-                    if (perCoreStacks_[index].TryPush(obj))
+                    if (perCoreStacks_[index].TryPush(element))
                         return;
 
                     if (++index == perCoreStacks_.Length)
@@ -191,7 +191,7 @@ namespace Enderlook.Pools
                 }
 
                 // Next, transfer a per-core stack to the global reserve.
-                perCoreStacks_[index].MoveToGlobalReserve(obj);
+                perCoreStacks_[index].MoveToGlobalReserve(element);
             }
         }
 

@@ -35,7 +35,8 @@ namespace Enderlook.Pools
 
         /// <summary>
         /// Rent an element from the pool.<br/>
-        /// If the pool is empty, instantiate a new element.
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
         /// </summary>
         /// <returns>Rented element.</returns>
         public abstract T Rent();
@@ -43,10 +44,10 @@ namespace Enderlook.Pools
         /// <summary>
         /// Return an element to the pool.<br/>
         /// If the pool is full, it's an implementation detail whenever the object is free or the pool is resized.<br/>
-        /// If <paramref name="obj"/> is <see langword="default"/>, it's an implementation detail whenever it throws an exception or ignores the call.<br/>
-        /// However, it should never leave the pool in an invalid state.
+        /// If <paramref name="element"/> is <see langword="default"/>, it's an implementation detail whenever it throws an exception or ignores the call. However, it should never leave the pool in an invalid state.
         /// </summary>
-        public abstract void Return(T obj);
+        /// <param name="element">Element to return.</param>
+        public abstract void Return(T element);
 
         /// <summary>
         /// Trim the content of the pool.
