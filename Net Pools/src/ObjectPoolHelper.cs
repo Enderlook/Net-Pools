@@ -26,10 +26,8 @@ namespace Enderlook.Pools
                 case Utilities.SystemLinqExpressions:
                     Factory = Expression.Lambda<Func<T>>(Expression.New(typeof(T)), Array.Empty<ParameterExpression>()).Compile();
                     break;
-
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
                 case Utilities.SystemReflectionEmitDynamicMethod:
-
                     DynamicMethod dynamicMethod = new DynamicMethod("Instantiate", typeof(T), Type.EmptyTypes);
                     ILGenerator generator = dynamicMethod.GetILGenerator();
                     generator.Emit(OpCodes.Newobj, constructor);
