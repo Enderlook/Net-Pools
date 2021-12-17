@@ -10,7 +10,7 @@ Initial release.
 - Fix `DynamicObjectPool<T>` not auto-trimming.
 - Fix `ThreadLocalOverPerLockedStacksObjectPool<T>.Rent()` (implementation behind `ObjectPool<T>.Shared.Rent()`) throwing when getting elements from global reserve.
 
-##
+## v0.2.0
 - Remove `class` constraint in generic parameter `T` in `ObjectPool<T>`.
 - Add `DynamicValueObjectPool<T>`. 
 - Improve documentation of `ObjectPool<T>`.
