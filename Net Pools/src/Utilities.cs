@@ -46,7 +46,7 @@ namespace Enderlook.Pools
                 goto isDisabled;
 #endif
 
-            // Try with different approaches beacuse the current platform may not support some of them.
+            // Try with different approaches because the current platform may not support some of them.
             try
             {
                 Expression.Lambda<Func<object>>(Expression.New(typeof(object)), Array.Empty<ParameterExpression>()).Compile()();
