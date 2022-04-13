@@ -543,9 +543,11 @@ namespace Enderlook.Pools
                 int newCount = count_ - 1;
                 if (unchecked((uint)newCount < (uint)items.Length))
                 {
-                    ref T reference = ref items[newCount];
-                    element = reference;
-                    reference = default;
+                    element = items[newCount];
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+                    if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+                        items[newCount] = default;
                     count = newCount;
                     return true;
                 }
