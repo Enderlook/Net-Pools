@@ -16,6 +16,7 @@ Initial release.
 - Improve documentation of `ObjectPool<T>`.
 - Rename parameter `obj` to `element` of `ObjectPool<T>.Return(T obj)`.
 
-##
+## v0.2.1
 - Fix object references not being cleaned correctly in `ObjectPool<T>.Shared` where `T` is a reference type.
-- Minimal perfomance improvements in `ObjectPool<T>.Shared` where `T` is a unmanaged value type.
+- Fix `ObjectPool<T>.Shared.Return(T obj)` storing twice the same object.
+- Minimal performance improvements in `ObjectPool<T>.Shared` where `T` is an unmanaged value type.

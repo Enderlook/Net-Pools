@@ -10,7 +10,7 @@
     <Product>Enderlook.Pools</Product>
     <RepositoryUrl>https://github.com/Enderlook/Net-Pools</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <LangVersion>10</LangVersion>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

@@ -183,7 +183,7 @@ namespace Enderlook.Pools
                 int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
                 for (int i = 0; i < perCoreStacks_.Length; i++)
                 {
-                    if (perCoreStacks_[index].TryPush(element))
+                    if (perCoreStacks_[index].TryPush(previous))
                         return;
 
                     if (++index == perCoreStacks_.Length)
@@ -191,7 +191,7 @@ namespace Enderlook.Pools
                 }
 
                 // Next, transfer a per-core stack to the global reserve.
-                perCoreStacks_[index].MoveToGlobalReserve(element);
+                perCoreStacks_[index].MoveToGlobalReserve(previous);
             }
         }
 

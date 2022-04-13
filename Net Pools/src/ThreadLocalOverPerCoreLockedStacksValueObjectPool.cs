@@ -169,7 +169,7 @@ namespace Enderlook.Pools
             T? previous = threadLocalElement_.Value;
             threadLocalElement_.Value = element;
             threadLocalElement_.MillisecondsTimeStamp = 0;
-            if (previous is not null)
+            if (previous is T previous_)
             {
                 // Try to store the object from one of the per-core stacks.
                 PerCoreStack[] perCoreStacks_ = perCoreStacks;
@@ -183,7 +183,7 @@ namespace Enderlook.Pools
                 int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
                 for (int i = 0; i < perCoreStacks_.Length; i++)
                 {
-                    if (perCoreStacks_[index].TryPush(element))
+                    if (perCoreStacks_[index].TryPush(previous_))
                         return;
 
                     if (++index == perCoreStacks_.Length)
@@ -191,7 +191,7 @@ namespace Enderlook.Pools
                 }
 
                 // Next, transfer a per-core stack to the global reserve.
-                perCoreStacks_[index].MoveToGlobalReserve(element);
+                perCoreStacks_[index].MoveToGlobalReserve(previous_);
             }
         }
 
