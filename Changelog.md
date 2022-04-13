@@ -18,3 +18,4 @@ Initial release.
 
 ##
 - Fix object references not being cleaned correctly in `ObjectPool<T>.Shared` where `T` is a reference type.
+- Minimal perfomance improvements in `ObjectPool<T>.Shared` where `T` is a unmanaged value type.

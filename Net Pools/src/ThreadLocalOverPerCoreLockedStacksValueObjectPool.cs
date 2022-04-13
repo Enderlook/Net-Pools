@@ -478,7 +478,7 @@ namespace Enderlook.Pools
 
         private struct PerCoreStack
         {
-            private T[] array;
+            private readonly T[] array;
             private int count;
             private int millisecondsTimeStamp;
 
@@ -631,10 +631,13 @@ namespace Enderlook.Pools
                 if (unchecked((uint)newGlobalCount >= (uint)globalReserve_.Length))
                     Array.Resize(ref globalReserve_, globalReserve_.Length * 2);
                 Array.Copy(items, 0, globalReserve_, globalCount, count_);
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
 #if NET6_0_OR_GREATER
-                Array.Clear(items);
+                    Array.Clear(items);
 #else
-                Array.Clear(items, 0, items.Length);
+                    Array.Clear(items, 0, items.Length);
 #endif
                 globalCount += count_;
                 count_ = 0;

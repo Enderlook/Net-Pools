@@ -478,7 +478,7 @@ namespace Enderlook.Pools
 
         private struct PerCoreStack
         {
-            private ObjectWrapper<T?>[] array;
+            private readonly ObjectWrapper<T?>[] array;
             private int count;
             private int millisecondsTimeStamp;
 
