@@ -546,6 +546,7 @@ namespace Enderlook.Pools
                 if (unchecked((uint)newCount < (uint)items.Length))
                 {
                     element = items[newCount].Value;
+                    items[newCount].Value = null;
                     count_ = newCount;
                 }
 

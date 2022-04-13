@@ -15,3 +15,6 @@ Initial release.
 - Add `DynamicValueObjectPool<T>`. 
 - Improve documentation of `ObjectPool<T>`.
 - Rename parameter `obj` to `element` of `ObjectPool<T>.Return(T obj)`.
+
+##
+- Fix object references not being cleaned correctly in `ObjectPool<T>.Shared` where `T` is a reference type.
