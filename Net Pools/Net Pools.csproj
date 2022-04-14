@@ -10,13 +10,14 @@
     <Product>Enderlook.Pools</Product>
     <RepositoryUrl>https://github.com/Enderlook/Net-Pools</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
     <LangVersion>10</LangVersion>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Nullable>enable</Nullable>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <CheckForOverflowUnderflow Condition="'$(Configuration)' == 'Debug'">true</CheckForOverflowUnderflow>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0' or '$(TargetFramework)' == 'netstandard2.1'">

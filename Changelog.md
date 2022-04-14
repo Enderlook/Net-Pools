@@ -1,6 +1,6 @@
 # Changelog
 
-##
+## v0.2.2
 - Add support for trimming.
 
 ## v0.2.1
