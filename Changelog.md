@@ -1,5 +1,8 @@
 # Changelog
 
+##
+- Add support for trimming.
+
 ## v0.2.1
 - Fix object references not being cleaned correctly in `ObjectPool<T>.Shared` where `T` is a reference type.
 - Fix `ObjectPool<T>.Shared.Return(T obj)` storing twice the same object.

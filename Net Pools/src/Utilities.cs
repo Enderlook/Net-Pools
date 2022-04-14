@@ -24,7 +24,9 @@ namespace Enderlook.Pools
             {
                 if (assembly.FullName == "UnityEngine, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null")
                 {
+#pragma warning disable IL2026 // Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code
                     Type? applicationType = assembly.GetType("UnityEngine.Application");
+#pragma warning restore IL2026 // Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code
                     if (applicationType is null) // The trimmer has removed the type, so think about the worst possible case.
                         goto isDisabled;
 
