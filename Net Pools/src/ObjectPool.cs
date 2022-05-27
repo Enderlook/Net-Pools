@@ -18,7 +18,14 @@ namespace Enderlook.Pools
         }
 
         /// <summary>
-        /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.
+        /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.<br/>
+        /// The shared pool has the following features:
+        /// <list type="bullet">
+        ///     <item>Instantiates new elements when empty.</item>item>
+        ///     <item>Resize itself to accommodate all returned elements to the pool.</item>
+        ///     <item>Periodically trims itself removing old elements from the pool (GC-triggered).</item>
+        ///     <item>Is thread-safe.</item>
+        /// </list>
         /// </summary>
         public static ObjectPool<T> Shared {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
