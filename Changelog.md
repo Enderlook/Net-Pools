@@ -2,6 +2,7 @@
 
 ##
 - Improve documentation.
+- Fix documentation typos.
 
 ## v0.2.2
 - Add support for trimming.
