@@ -14,6 +14,8 @@ namespace Enderlook.Pools
         public const int SystemReflectionEmitDynamicMethod = 2;
         public static readonly int DynamicCompilationMode;
 
+        public static readonly ParameterExpression[] EmptyParameters = new ParameterExpression[0];
+
         static Utilities()
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;

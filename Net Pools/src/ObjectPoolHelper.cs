@@ -31,7 +31,7 @@ namespace Enderlook.Pools
             switch (Utilities.DynamicCompilationMode)
             {
                 case Utilities.SystemLinqExpressions:
-                    Factory = Expression.Lambda<Func<T>>(Expression.New(typeof(T)), Array.Empty<ParameterExpression>()).Compile();
+                    Factory = Expression.Lambda<Func<T>>(Expression.New(typeof(T)), Utilities.EmptyParameters).Compile();
                     break;
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
                 case Utilities.SystemReflectionEmitDynamicMethod:
