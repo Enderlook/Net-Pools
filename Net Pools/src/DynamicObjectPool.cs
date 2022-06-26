@@ -63,7 +63,7 @@ namespace Enderlook.Pools
         /// This reserve pool is only acceded when the hot pool gets full or empty since it's slower.<br/>
         /// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.</param>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-        /// If no delegate is provided, a factory with the default constructor of <typeparamref name="T"/> will be used.</param>
+        /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
         /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
         public DynamicObjectPool(int hotCapacity, int initialColdCapacity, Func<T>? factory)
         {
@@ -84,7 +84,7 @@ namespace Enderlook.Pools
         /// If this capacity is fulled, the pool will expand a cold region.<br/>
         /// The hot capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>.</param>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-        /// If no delegate is provided, a factory with the default constructor for <typeparamref name="T"/> will be used.</param>
+        /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
         /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
         public DynamicObjectPool(int hotCapacity, Func<T>? factory) : this(hotCapacity, hotCapacity, factory) { }
 
@@ -99,7 +99,7 @@ namespace Enderlook.Pools
         /// Creates a pool of objects.
         /// </summary>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-        /// If no delegate is provided, a factory with the default constructor for <typeparamref name="T"/> will be used.</param>
+        /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
         public DynamicObjectPool(Func<T>? factory) : this(Environment.ProcessorCount * 2, Environment.ProcessorCount * 2, factory) { }
 
         /// <summary>

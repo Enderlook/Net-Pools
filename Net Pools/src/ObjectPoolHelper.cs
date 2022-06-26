@@ -9,6 +9,7 @@ namespace Enderlook.Pools
     internal static class ObjectPoolHelper<T>
     {
         public static readonly Func<T> Factory;
+        private static readonly bool useDefault;
 
         static ObjectPoolHelper()
         {
@@ -17,7 +18,13 @@ namespace Enderlook.Pools
             ConstructorInfo? constructor = typeof(T).GetConstructor(Type.EmptyTypes);
             if (constructor is null)
             {
-                Factory = () => throw new MissingMethodException($"No parameterless constructor defined for type '{typeof(T)}'.");
+                if (typeof(T).IsValueType)
+                {
+                    useDefault = true;
+                    Factory = () => default!;
+                }
+                else
+                    Factory = () => throw new MissingMethodException($"No parameterless constructor defined for type '{typeof(T)}'.");
                 return;
             }
 
@@ -45,8 +52,18 @@ namespace Enderlook.Pools
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining
+#if NET5_0_OR_GREATER
+            | MethodImplOptions.AggressiveOptimization
+#endif
+            )]
         public static T Create()
-            => Utilities.DynamicCompilationMode == Utilities.DisabledDynamicCompilation ? Activator.CreateInstance<T>() : Factory();
+        {
+            if (useDefault)
+                return default!;
+            if (Utilities.DynamicCompilationMode == Utilities.DisabledDynamicCompilation)
+                return Activator.CreateInstance<T>();
+            return Factory();
+        }
     }
 }

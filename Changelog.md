@@ -3,6 +3,7 @@
 ##
 - Improve documentation.
 - Fix documentation typos.
+- Fix error when using value types without parameterless constructor.
 
 ## v0.2.2
 - Add support for trimming.
