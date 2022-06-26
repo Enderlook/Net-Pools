@@ -60,7 +60,7 @@ namespace Enderlook.Pools
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
             try
             {
-                DynamicMethod dynamicMethod = new DynamicMethod("Instantiate", typeof(object), Type.EmptyTypes);
+                DynamicMethod dynamicMethod = new ("Instantiate", typeof(object), Type.EmptyTypes);
                 ILGenerator generator = dynamicMethod.GetILGenerator();
                 generator.Emit(OpCodes.Newobj, typeof(object).GetConstructor(Type.EmptyTypes)!);
                 generator.Emit(OpCodes.Ret);

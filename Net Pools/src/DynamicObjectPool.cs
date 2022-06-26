@@ -74,7 +74,7 @@ namespace Enderlook.Pools
             array = new ObjectWrapper<T?>[hotCapacity - 1]; // -1 due to firstElement.
             reserve = new ObjectWrapper<T?>[initialColdCapacity];
 
-            GCCallback _ = new GCCallback(this);
+            GCCallback _ = new(this);
         }
 
         /// <summary>

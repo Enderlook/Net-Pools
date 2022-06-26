@@ -28,7 +28,7 @@ namespace Enderlook.Pools
                     break;
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
                 case Utilities.SystemReflectionEmitDynamicMethod:
-                    DynamicMethod dynamicMethod = new DynamicMethod("Instantiate", typeof(T), Type.EmptyTypes);
+                    DynamicMethod dynamicMethod = new("Instantiate", typeof(T), Type.EmptyTypes);
                     ILGenerator generator = dynamicMethod.GetILGenerator();
                     generator.Emit(OpCodes.Newobj, constructor);
                     generator.Emit(OpCodes.Ret);
