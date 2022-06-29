@@ -111,10 +111,10 @@ namespace Enderlook.Pools
         /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
         public override int ApproximateCount()
         {
-            int count = firstElement.HasValue ? 1 : 0;
+            int count = firstElement.NotSynchronizedHasValue ? 1 : 0;
             ValueObjectWrapper<T>[] items = array;
             for (int i = 0; i < items.Length; i++)
-                if (items[i].HasValue)
+                if (items[i].NotSynchronizedHasValue)
                     count++;
             return count + reserveCount;
         }
@@ -127,7 +127,7 @@ namespace Enderlook.Pools
             // Note that intitial read are optimistically not syncronized. This is intentional.
             // We will interlock only when we have a candidate.
             // In a worst case we may miss some recently returned objects.
-            if (!firstElement.HasValue || !firstElement.TryPopValue(out T element))
+            if (!firstElement.NotSynchronizedHasValue || !firstElement.TryPopValue(out T element))
             {
                 // Next, we look at all remaining elements.
                 ValueObjectWrapper<T>[] items = array;
@@ -137,7 +137,7 @@ namespace Enderlook.Pools
                     // Note that intitial read are optimistically not syncronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects.
-                    if (items[i].HasValue && items[i].TryPopValue(out element))
+                    if (items[i].NotSynchronizedHasValue && items[i].TryPopValue(out element))
                         break;
                 }
 
@@ -161,12 +161,12 @@ namespace Enderlook.Pools
             // Intentionally not using interlocked here.
             // In a worst case scenario two objects may be stored into same slot.
             // It is very unlikely to happen and will only mean that one of the objects will get collected.
-            if (firstElement.HasValue || !firstElement.TrySetValue(ref element))
+            if (firstElement.NotSynchronizedHasValue || !firstElement.TrySetValue(ref element))
             {
                 ValueObjectWrapper<T>[] items = array;
                 for (int i = 0; i < items.Length; i++)
                 {
-                    if (!items[i].HasValue && items[i].TrySetValue(ref element))
+                    if (!items[i].NotSynchronizedHasValue && items[i].TrySetValue(ref element))
                         break;
                 }
 
@@ -248,7 +248,7 @@ namespace Enderlook.Pools
                 {
                     for (int i = 0; i < length; i++)
                     {
-                        if (items[i].HasValue)
+                        if (items[i].NotSynchronizedHasValue)
                         {
                             items[i].Clear();
                             if (--arrayTrimCount == 0)
@@ -373,7 +373,7 @@ namespace Enderlook.Pools
                     // Note that intitial read and write are optimistically not syncronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects or accidentally free objects.
-                    if (!items[i].HasValue)
+                    if (!items[i].NotSynchronizedHasValue)
                     {
                         if (!has)
                             value = reserve_[--count];

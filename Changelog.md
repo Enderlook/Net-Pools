@@ -4,6 +4,7 @@
 - Improve documentation.
 - Fix documentation typos.
 - Fix error when using value types without parameterless constructor.
+- Reduce memory consumption of `DynamicValueObjectPool<T>`.
 
 ## v0.2.2
 - Add support for trimming.
