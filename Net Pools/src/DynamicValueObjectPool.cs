@@ -124,7 +124,7 @@ namespace Enderlook.Pools
         {
             // First, we examine the first element.
             // If that fails, we look at the remaining elements.
-            // Note that intitial read are optimistically not syncronized. This is intentional.
+            // Note that intitial read are optimistically not synchronized. This is intentional.
             // We will interlock only when we have a candidate.
             // In a worst case we may miss some recently returned objects.
             if (!firstElement.NotSynchronizedHasValue || !firstElement.TryPopValue(out T element))
@@ -134,7 +134,7 @@ namespace Enderlook.Pools
 
                 for (int i = 0; i < items.Length; i++)
                 {
-                    // Note that intitial read are optimistically not syncronized. This is intentional.
+                    // Note that intitial read are optimistically not synchronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects.
                     if (items[i].NotSynchronizedHasValue && items[i].TryPopValue(out element))
@@ -370,7 +370,7 @@ namespace Enderlook.Pools
                 bool has = false;
                 for (int i = 0; i < items.Length / 2 && count > 0; i++)
                 {
-                    // Note that intitial read and write are optimistically not syncronized. This is intentional.
+                    // Note that intitial read and write are optimistically not synchronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects or accidentally free objects.
                     if (!items[i].NotSynchronizedHasValue)
@@ -415,7 +415,7 @@ namespace Enderlook.Pools
 
             for (int i = 0; i < items.Length / 2 && count < reserve_.Length; i++)
             {
-                // We don't use an optimistically not syncronized initial read in this part.
+                // We don't use an optimistically not synchronized initial read in this part.
                 // This is because we expect the majority of the array to be filled.
                 // So it's not worth doing an initial read to check that.
                 if (items[i].TryPopValue(out T element))
