@@ -159,7 +159,7 @@ namespace Enderlook.Pools
         /// <param name="element">Object to return.</param>
         public override void Return(T element)
         {
-            if (element is null) Utilities.ThrowArgumentNullException_Obj();
+            if (element is null) Utils.ThrowArgumentNullException_Obj();
             Debug.Assert(element is not null);
 
             // Store the element into the thread local field.
@@ -221,7 +221,7 @@ namespace Enderlook.Pools
 
             int currentMilliseconds = Environment.TickCount;
 
-            Utilities.MemoryPressure memoryPressure;
+            Utils.MemoryPressure memoryPressure;
             int perCoreTrimMilliseconds;
             int perCoreTrimCount;
             uint threadLocalTrimMilliseconds;
@@ -229,7 +229,7 @@ namespace Enderlook.Pools
             float globalTrimPercentage;
             if (force)
             {
-                memoryPressure = Utilities.MemoryPressure.High;
+                memoryPressure = Utils.MemoryPressure.High;
                 perCoreTrimCount = PerCoreHighTrimCount;
                 // Forces to clear everything regardless of time.
                 perCoreTrimMilliseconds = 0;
@@ -239,10 +239,10 @@ namespace Enderlook.Pools
             }
             else
             {
-                memoryPressure = Utilities.GetMemoryPressure();
+                memoryPressure = Utils.GetMemoryPressure();
                 switch (memoryPressure)
                 {
-                    case Utilities.MemoryPressure.High:
+                    case Utils.MemoryPressure.High:
                         perCoreTrimCount = PerCoreHighTrimCount;
                         perCoreTrimMilliseconds = PerCoreHighTrimAfterMilliseconds;
                         // Forces to clear everything regardless of time.
@@ -250,7 +250,7 @@ namespace Enderlook.Pools
                         globalTrimMilliseconds = 0;
                         globalTrimPercentage = 1;
                         break;
-                    case Utilities.MemoryPressure.Medium:
+                    case Utils.MemoryPressure.Medium:
                         perCoreTrimCount = PerCoreMediumTrimCount;
                         perCoreTrimMilliseconds = PerCoreMediumTrimAfterMilliseconds;
                         threadLocalTrimMilliseconds = ThreadLocalMediumMilliseconds;
@@ -258,7 +258,7 @@ namespace Enderlook.Pools
                         globalTrimPercentage = ReserveMediumTrimPercentage;
                         break;
                     default:
-                        Debug.Assert(memoryPressure == Utilities.MemoryPressure.Low);
+                        Debug.Assert(memoryPressure == Utils.MemoryPressure.Low);
                         perCoreTrimCount = PerCoreLowTrimCount;
                         perCoreTrimMilliseconds = PerCoreLowTrimAfterMilliseconds;
                         threadLocalTrimMilliseconds = ThreadLocalLowMilliseconds;

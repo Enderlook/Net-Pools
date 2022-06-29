@@ -28,13 +28,13 @@ namespace Enderlook.Pools
                 return;
             }
 
-            switch (Utilities.DynamicCompilationMode)
+            switch (CompilationHelper.DynamicCompilationMode)
             {
-                case Utilities.SystemLinqExpressions:
-                    Factory = Expression.Lambda<Func<T>>(Expression.New(typeof(T)), Utilities.EmptyParameters).Compile();
+                case CompilationHelper.SystemLinqExpressions:
+                    Factory = Expression.Lambda<Func<T>>(Expression.New(typeof(T)), CompilationHelper.EmptyParameters).Compile();
                     break;
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-                case Utilities.SystemReflectionEmitDynamicMethod:
+                case CompilationHelper.SystemReflectionEmitDynamicMethod:
                     DynamicMethod dynamicMethod = new("Instantiate", typeof(T), Type.EmptyTypes);
                     ILGenerator generator = dynamicMethod.GetILGenerator();
                     generator.Emit(OpCodes.Newobj, constructor);
@@ -61,7 +61,7 @@ namespace Enderlook.Pools
         {
             if (useDefault)
                 return default!;
-            if (Utilities.DynamicCompilationMode == Utilities.DisabledDynamicCompilation)
+            if (CompilationHelper.DynamicCompilationMode == CompilationHelper.DisabledDynamicCompilation)
                 return Activator.CreateInstance<T>();
             return Factory();
         }

@@ -68,8 +68,8 @@ namespace Enderlook.Pools
         /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
         public DynamicValueObjectPool(int hotCapacity, int initialColdCapacity, Func<T>? factory)
         {
-            if (hotCapacity < 1) Utilities.ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne();
-            if (initialColdCapacity < 0) Utilities.ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative();
+            if (hotCapacity < 1) Utils.ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne();
+            if (initialColdCapacity < 0) Utils.ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative();
 
             this.factory = factory ?? ObjectPoolHelper<T>.Factory;
             array = new ValueObjectWrapper<T>[hotCapacity - 1]; // -1 due to firstElement.
@@ -212,16 +212,16 @@ namespace Enderlook.Pools
             }
             else
             {
-                switch (Utilities.GetMemoryPressure())
+                switch (Utils.GetMemoryPressure())
                 {
-                    case Utilities.MemoryPressure.High:
+                    case Utils.MemoryPressure.High:
                         arrayTrimCount = length;
                         arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                         // Forces to clear everything regardless of time.
                         reserveTrimMilliseconds = 0;
                         reserveTrimPercentage = 1;
                         break;
-                    case Utilities.MemoryPressure.Medium:
+                    case Utils.MemoryPressure.Medium:
                         arrayTrimCount = ArrayMediumTrimCount;
                         arrayTrimMilliseconds = ArrayMediumAfterMilliseconds;
                         reserveTrimMilliseconds = ReserveMediumTrimAfterMilliseconds;
