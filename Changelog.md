@@ -6,6 +6,7 @@
 - Fix error when using value types without parameterless constructor.
 - Reduce memory consumption of `DynamicValueObjectPool<T>`.
 - Minimal performance improvements.
+- Tweak exception message thrown when a public parameterless constructor is not found for reference types and no factory was provided.
 
 ## v0.2.2
 - Add support for trimming.

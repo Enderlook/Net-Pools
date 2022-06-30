@@ -24,7 +24,7 @@ namespace Enderlook.Pools
                     Factory = () => default!;
                 }
                 else
-                    Factory = () => throw new MissingMethodException($"No parameterless constructor defined for type '{typeof(T)}'.");
+                    Factory = () => throw new MissingMethodException($"No public parameterless constructor defined for type '{typeof(T)}'.");
                 return;
             }
 
