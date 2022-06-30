@@ -145,8 +145,15 @@ namespace Enderlook.Pools
             return ObjectPoolHelper<T>.Create();
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            T FillFromGlobalReserve()
+            static T FillFromGlobalReserve()
             {
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            int currentProcessorId = Thread.GetCurrentProcessorId();
+#else
+                int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
+#endif
+                int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
+
                 if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out T element))
                     return element;
                 // Finally, instantiate a new object.
