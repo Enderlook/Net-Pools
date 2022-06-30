@@ -1,7 +1,6 @@
-﻿namespace Enderlook.Pools
+﻿namespace Enderlook.Pools;
+
+internal struct ObjectWrapper<T> // Prevent runtime covariant checks on array access.
 {
-    internal struct ObjectWrapper<T> // Prevent runtime covariant checks on array access.
-    {
-        public T Value;
-    }
+    public T Value;
 }
