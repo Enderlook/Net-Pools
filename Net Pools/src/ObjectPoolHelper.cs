@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -6,7 +7,11 @@ using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools
 {
-    internal static class ObjectPoolHelper<T>
+    internal static class ObjectPoolHelper<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+    T>
     {
         public static readonly Func<T> Factory;
         private static readonly bool useDefault;
