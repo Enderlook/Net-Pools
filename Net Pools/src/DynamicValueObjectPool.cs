@@ -113,9 +113,14 @@ namespace Enderlook.Pools
         {
             int count = firstElement.NotSynchronizedHasValue ? 1 : 0;
             ValueObjectWrapper<T>[] items = array;
-            for (int i = 0; i < items.Length; i++)
-                if (items[i].NotSynchronizedHasValue)
+            ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+            ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, items.Length);
+            while (Unsafe.IsAddressGreaterThan(ref current, ref end))
+            {
+                if (current.NotSynchronizedHasValue)
                     count++;
+                current = ref Unsafe.Add(ref current, 1);
+            }
             return count + reserveCount;
         }
 
@@ -131,14 +136,16 @@ namespace Enderlook.Pools
             {
                 // Next, we look at all remaining elements.
                 ValueObjectWrapper<T>[] items = array;
-
-                for (int i = 0; i < items.Length; i++)
+                ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+                ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressGreaterThan(ref current, ref end))
                 {
                     // Note that intitial read are optimistically not synchronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects.
-                    if (items[i].NotSynchronizedHasValue && items[i].TryPopValue(out element))
+                    if (current.NotSynchronizedHasValue && current.TryPopValue(out element))
                         break;
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
                 // Next, we look at the reserve if it has elements.
@@ -164,10 +171,13 @@ namespace Enderlook.Pools
             if (firstElement.NotSynchronizedHasValue || !firstElement.TrySetValue(ref element))
             {
                 ValueObjectWrapper<T>[] items = array;
-                for (int i = 0; i < items.Length; i++)
+                ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+                ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressGreaterThan(ref current, ref end))
                 {
-                    if (!items[i].NotSynchronizedHasValue && items[i].TrySetValue(ref element))
+                    if (!current.NotSynchronizedHasValue && current.TrySetValue(ref element))
                         break;
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
                 SendToReserve(element);
@@ -246,17 +256,21 @@ namespace Enderlook.Pools
 
                 if (arrayTrimCount != length)
                 {
-                    for (int i = 0; i < length; i++)
+                    ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+                    Debug.Assert(items.Length == length);
+                    ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, length);
+                    while (Unsafe.IsAddressGreaterThan(ref current, ref end))
                     {
-                        if (items[i].NotSynchronizedHasValue)
+                        if (current.NotSynchronizedHasValue)
                         {
-                            items[i].Clear();
+                            current.Clear();
                             if (--arrayTrimCount == 0)
                             {
                                 arrayMillisecondsTimeStamp += arrayMillisecondsTimeStamp / 4; // Give the remaining items a bit more time.
                                 break;
                             }
                         }
+                        current = ref Unsafe.Add(ref current, 1);
                     }
                     arrayMillisecondsTimeStamp = 0;
                 }
@@ -362,31 +376,48 @@ namespace Enderlook.Pools
             } while (reserve_ is null);
 
             int oldCount = reserveCount;
+#if DEBUG
             int count = oldCount;
-            if (count > 0)
+#endif
+            if (oldCount > 0)
             {
-                T element = reserve_[--count];
-                T value = default;
-                bool has = false;
-                for (int i = 0; i < items.Length / 2 && count > 0; i++)
+#if DEBUG
+                Debug.Assert(--count < reserve_.Length);
+#endif
+                ref T startReserve = ref Utils.GetArrayDataReference(reserve_);
+                ref T currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
+                T element = currentReserve;
+
+                ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+                ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, items.Length / 2);
+                while (Unsafe.IsAddressLessThan(ref current, ref end) && Unsafe.IsAddressGreaterThan(ref currentReserve, ref startReserve))
                 {
+#if DEBUG
+                    Debug.Assert(count > 0);
+#endif
                     // Note that intitial read and write are optimistically not synchronized. This is intentional.
-                    // We will interlock only when we have a candidate.
+                    // We will lock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects or accidentally free objects.
-                    if (!items[i].NotSynchronizedHasValue)
+                    if (!current.NotSynchronizedHasValue)
                     {
-                        if (!has)
-                            value = reserve_[--count];
-                        has = !items[i].TrySetValue(ref value);
+#if DEBUG
+                        Debug.Assert(--count < reserve_.Length);
+#endif
+                        ref T old = ref currentReserve;
+                        currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
+                        if (!current.TrySetValue(ref element))
+                            currentReserve = ref old;
                     }
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
-                if (has)
-                    reserve_[count++] = value;
+                int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+#if DEBUG
+                Debug.Assert(count_ == count);
+#endif
+                Array.Clear(reserve_, count_, oldCount - count_);
 
-                Array.Clear(reserve_, count, oldCount - count);
-
-                reserveCount = count;
+                reserveCount = count_;
                 reserve = reserve_;
                 return element;
             }
@@ -407,22 +438,49 @@ namespace Enderlook.Pools
                 reserve_ = Interlocked.Exchange(ref reserve, null);
             } while (reserve_ is null);
 
+#if DEBUG
             int count = reserveCount;
-            if (count + 1 + (items.Length / 2) > reserve_.Length)
+#endif
+            if (reserveCount + 1 + (items.Length / 2) > reserve_.Length)
                 Array.Resize(ref reserve_, Math.Max(reserve_.Length * 2, 1));
 
-            reserve_[count++] = obj;
+            ref T startReserve = ref Utils.GetArrayDataReference(reserve_);
+            ref T endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
 
-            for (int i = 0; i < items.Length / 2 && count < reserve_.Length; i++)
+#if DEBUG
+            Debug.Assert(count++ < reserve_.Length);
+#endif
+            Debug.Assert(reserveCount < reserve_.Length);
+            ref T currentReserve = ref Unsafe.Add(ref startReserve, reserveCount);
+            currentReserve = obj;
+
+            ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
+            ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, items.Length / 2);
+
+            while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 // We don't use an optimistically not synchronized initial read in this part.
                 // This is because we expect the majority of the array to be filled.
                 // So it's not worth doing an initial read to check that.
-                if (items[i].TryPopValue(out T element))
-                    reserve_[count++] = element;
+                if (current.TryPopValue(out T element))
+                {
+#if DEBUG
+                    Debug.Assert(count++ < reserve_.Length);
+#endif
+                    currentReserve = element;
+                    currentReserve = ref Unsafe.Add(ref currentReserve, 1);
+                    if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
+                        break;
+                }
+                current = ref Unsafe.Add(ref current, 1);
             }
 
-            reserveCount = count;
+            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+#if DEBUG
+            Debug.Assert(count_ == count);
+#endif
+
+            reserveCount = count_;
             reserve = reserve_;
         }
 

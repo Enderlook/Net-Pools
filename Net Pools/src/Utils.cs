@@ -35,6 +35,17 @@ namespace Enderlook.Pools
 #endif
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref T GetArrayDataReference<T>(T[] array)
+        {
+            Debug.Assert(array.Length > 0);
+#if NET5_0_OR_GREATER
+            return ref MemoryMarshal.GetArrayDataReference(array);
+#else
+            return ref MemoryMarshal.GetReference((Span<T>)array);
+#endif
+        }
+
         [DoesNotReturn]
         public static void ThrowArgumentNullException_Obj()
             => throw new ArgumentNullException("obj");

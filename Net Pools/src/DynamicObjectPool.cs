@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -112,9 +113,14 @@ namespace Enderlook.Pools
         {
             int count = firstElement is null ? 0 : 1;
             ObjectWrapper<T?>[] items = array;
-            for (int i = 0; i < items.Length; i++)
-                if (items[i].Value is not null)
+            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+            while (Unsafe.IsAddressLessThan(ref current, ref end))
+            {
+                if (current.Value is not null)
                     count++;
+                current = ref Unsafe.Add(ref current, 1);
+            }
             return count + reserveCount;
         }
 
@@ -131,15 +137,17 @@ namespace Enderlook.Pools
             {
                 // Next, we look at all remaining elements.
                 ObjectWrapper<T?>[] items = array;
-
-                for (int i = 0; i < items.Length; i++)
+                ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
                 {
                     // Note that intitial read are optimistically not synchronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects.
-                    element = items[i].Value;
-                    if (element is not null && element == Interlocked.CompareExchange(ref items[i].Value, null, element))
+                    element = current.Value;
+                    if (element is not null && element == Interlocked.CompareExchange(ref current.Value, null, element))
                         break;
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
                 // Next, we look at the reserve if it has elements.
@@ -163,16 +171,19 @@ namespace Enderlook.Pools
             else
             {
                 ObjectWrapper<T?>[] items = array;
-                for (int i = 0; i < items.Length; i++)
+                ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
                 {
-                    if (items[i].Value is null)
+                    if (current.Value is null)
                     {
                         // Intentionally not using interlocked here.
                         // In a worst case scenario two objects may be stored into same slot.
                         // It is very unlikely to happen and will only mean that one of the objects will get collected.
-                        items[i].Value = element;
+                        current.Value = element;
                         return;
                     }
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
                 SendToReserve(element);
@@ -251,18 +262,22 @@ namespace Enderlook.Pools
 
                 if (arrayTrimCount != length)
                 {
-                    for (int i = 0; i < length; i++)
+                    ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+                    Debug.Assert(items.Length == length);
+                    ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, length);
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
                     {
-                        if (items[i].Value is not null)
+                        if (current.Value is not null)
                         {
                             // Intentionally not using interlocked here.
-                            items[i].Value = null;
+                            current.Value = null;
                             if (--arrayTrimCount == 0)
                             {
                                 arrayMillisecondsTimeStamp += arrayMillisecondsTimeStamp / 4; // Give the remaining items a bit more time.
                                 break;
                             }
                         }
+                        current = ref Unsafe.Add(ref current, 1);
                     }
                     arrayMillisecondsTimeStamp = 0;
                 }
@@ -368,23 +383,47 @@ namespace Enderlook.Pools
             } while (reserve_ is null);
 
             int oldCount = reserveCount;
+#if DEBUG
             int count = oldCount;
-            if (count > 0)
+#endif
+            if (oldCount > 0)
             {
-                T? element = reserve_[--count].Value;
+#if DEBUG
+                Debug.Assert(--count < reserve_.Length);
+#endif
+                ref ObjectWrapper<T?> startReserve = ref Utils.GetArrayDataReference(reserve_);
+                ref ObjectWrapper<T?> currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
+                T? element = currentReserve.Value;
                 Debug.Assert(element is not null);
-                for (int i = 0; i < items.Length / 2 && count > 0; i++)
+
+                ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
+                while (Unsafe.IsAddressLessThan(ref current, ref end) && Unsafe.IsAddressGreaterThan(ref currentReserve, ref startReserve))
                 {
+#if DEBUG
+                    Debug.Assert(count > 0);
+#endif
                     // Note that intitial read and write are optimistically not synchronized. This is intentional.
                     // We will interlock only when we have a candidate.
                     // In a worst case we may miss some recently returned objects or accidentally free objects.
-                    if (items[i].Value is null)
-                        items[i].Value = reserve_[--count].Value;
+                    if (current.Value is null)
+                    {
+#if DEBUG
+                        Debug.Assert(--count < reserve_.Length);
+#endif
+                        currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
+                        current.Value = currentReserve.Value;
+                    }
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
-                Array.Clear(reserve_, count, oldCount - count);
+                int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+#if DEBUG
+                Debug.Assert(count_ == count);
+#endif
+                Array.Clear(reserve_, count_, oldCount - count_);
 
-                reserveCount = count;
+                reserveCount = count_;
                 reserve = reserve_;
                 return element;
             }
@@ -407,23 +446,50 @@ namespace Enderlook.Pools
                 reserve_ = Interlocked.Exchange(ref reserve, null);
             } while (reserve_ is null);
 
+#if DEBUG
             int count = reserveCount;
-            if (count + 1 + (items.Length / 2) > reserve_.Length)
+#endif
+            if (reserveCount + 1 + (items.Length / 2) > reserve_.Length)
                 Array.Resize(ref reserve_, Math.Max(reserve_.Length * 2, 1));
 
-            reserve_[count++].Value = obj;
+            ref ObjectWrapper<T?> startReserve = ref Utils.GetArrayDataReference(reserve_);
+            ref ObjectWrapper<T?> endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
 
-            for (int i = 0; i < items.Length / 2 && count < reserve_.Length; i++)
+#if DEBUG
+            Debug.Assert(count++ < reserve_.Length);
+#endif
+            Debug.Assert(reserveCount < reserve_.Length);
+            ref ObjectWrapper<T?> currentReserve = ref Unsafe.Add(ref startReserve, reserveCount);
+            currentReserve.Value = obj;
+
+            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
+
+            while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 // We don't use an optimistically not synchronized initial read in this part.
                 // This is because we expect the majority of the array to be filled.
                 // So it's not worth doing an initial read to check that.
-                T? element = Interlocked.Exchange(ref items[i].Value, null);
+                T? element = Interlocked.Exchange(ref current.Value, null);
                 if (element is not null)
-                    reserve_[count++].Value = element;
+                {
+#if DEBUG
+                    Debug.Assert(count++ < reserve_.Length);
+#endif
+                    currentReserve.Value = element;
+                    currentReserve = ref Unsafe.Add(ref currentReserve, 1);
+                    if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
+                        break;
+                }
+                current = ref Unsafe.Add(ref current, 1);
             }
 
-            reserveCount = count;
+            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+#if DEBUG
+            Debug.Assert(count_ == count);
+#endif
+
+            reserveCount = count_;
             reserve = reserve_;
         }
 

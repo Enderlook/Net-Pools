@@ -76,7 +76,7 @@ namespace Enderlook.Pools
             catch { }
 #endif
 
-            isDisabled:
+        isDisabled:
             DynamicCompilationMode = DisabledDynamicCompilation;
         }
     }

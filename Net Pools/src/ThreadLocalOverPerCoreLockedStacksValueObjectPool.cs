@@ -117,6 +117,7 @@ namespace Enderlook.Pools
 
             // Next, try to get an element from one of the per-core stacks.
             PerCoreStack[] perCoreStacks_ = perCoreStacks;
+            ref PerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
             // Try to pop from the associated stack first.
             // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -127,7 +128,9 @@ namespace Enderlook.Pools
             int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
             for (int i = 0; i < perCoreStacks_.Length; i++)
             {
-                if (perCoreStacks[index].TryPop(out T element))
+                Debug.Assert(index < perCoreStacks_.Length);
+                // TODO: This Unsafe.Add could be improved to avoid the under the hood mulitplication (`base + offset * size` and just do `base + offset`).
+                if (Unsafe.Add(ref perCoreStacks_Root, index).TryPop(out T element))
                     return element;
 
                 if (++index == perCoreStacks_.Length)
@@ -144,7 +147,7 @@ namespace Enderlook.Pools
             [MethodImpl(MethodImplOptions.NoInlining)]
             T FillFromGlobalReserve()
             {
-                if (perCoreStacks_[index].FillFromGlobalReserve(out T element))
+                if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out T element))
                     return element;
                 // Finally, instantiate a new object.
                 return ObjectPoolHelper<T>.Create();
@@ -173,6 +176,7 @@ namespace Enderlook.Pools
             {
                 // Try to store the object from one of the per-core stacks.
                 PerCoreStack[] perCoreStacks_ = perCoreStacks;
+                ref PerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
                 // Try to push from the associated stack first.
                 // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -183,7 +187,8 @@ namespace Enderlook.Pools
                 int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
                 for (int i = 0; i < perCoreStacks_.Length; i++)
                 {
-                    if (perCoreStacks_[index].TryPush(previous_))
+                    Debug.Assert(index < perCoreStacks_.Length);
+                    if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(previous_))
                         return;
 
                     if (++index == perCoreStacks_.Length)
@@ -191,7 +196,8 @@ namespace Enderlook.Pools
                 }
 
                 // Next, transfer a per-core stack to the global reserve.
-                perCoreStacks_[index].MoveToGlobalReserve(previous_);
+                Debug.Assert(index < perCoreStacks_.Length);
+                Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous_);
             }
         }
 
@@ -268,64 +274,99 @@ namespace Enderlook.Pools
                 }
             }
 
-            // Trim each of the per-core stacks.
-            for (int i = 0; i < perCoreStacks.Length; i++)
-                perCoreStacks[i].TryTrim(currentMilliseconds, perCoreTrimMilliseconds, perCoreTrimCount);
-
-            // Trim each of the thread local fields.
-            // Note that threads may be modifying their thread local fields concurrently with this trimming happening.
-            // We do not force synchronization with those operations, so we accept the fact
-            // that we may potentially trim an object we didn't need to.
-            // Both of these should be rare occurrences.
-
-            GCHandle[]? allThreadLocalElements_;
-            do
             {
-                allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
-            } while (allThreadLocalElements_ is null);
-            int length = allThreadLocalElementsCount;
-            int count = 0;
-
-            // Under high pressure, we don't wait time to trim, so we release all thread locals.
-            if (threadLocalTrimMilliseconds == 0)
-            {
-                for (int i = 0; i < length; i++)
+                PerCoreStack[] perCoreStacks_ = perCoreStacks;
+                ref PerCoreStack current = ref Utils.GetArrayDataReference(perCoreStacks_);
+                ref PerCoreStack end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
+                // Trim each of the per-core stacks.
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
                 {
-                    GCHandle handle = allThreadLocalElements_[i];
-                    object? target = handle.Target;
-                    if (target is null)
-                    {
-                        handle.Free();
-                        continue;
-                    }
-                    Debug.Assert(target is ThreadLocalElement);
-                    Unsafe.As<ThreadLocalElement>(target).Clear();
-                    allThreadLocalElements_[count++] = handle;
-                }
-            }
-            else
-            {
-                // Otherwise, release thread locals based on how long we've observed them to be stored.
-                // This time is approximate, with the time set not when the object is stored but when we see it during a Trim,
-                // so it takes at least two Trim calls (and thus two gen2 GCs) to drop an object, unless we're in high memory pressure.
-
-                for (int i = 0; i < length; i++)
-                {
-                    GCHandle handle = allThreadLocalElements_[i];
-                    object? target = handle.Target;
-                    if (target is null)
-                    {
-                        handle.Free();
-                        continue;
-                    }
-                    Debug.Assert(target is ThreadLocalElement);
-                    Unsafe.As<ThreadLocalElement>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
-                    allThreadLocalElements_[count++] = handle;
+                    current.TryTrim(currentMilliseconds, perCoreTrimMilliseconds, perCoreTrimCount);
+                    current = ref Unsafe.Add(ref current, 1);
                 }
             }
 
-            allThreadLocalElementsCount = count;
-            allThreadLocalElements = allThreadLocalElements_;
+            {
+                // Trim each of the thread local fields.
+                // Note that threads may be modifying their thread local fields concurrently with this trimming happening.
+                // We do not force synchronization with those operations, so we accept the fact
+                // that we may potentially trim an object we didn't need to.
+                // Both of these should be rare occurrences.
+
+                GCHandle[]? allThreadLocalElements_;
+                do
+                {
+                    allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
+                } while (allThreadLocalElements_ is null);
+                int length = allThreadLocalElementsCount;
+
+                ref GCHandle start = ref Utils.GetArrayDataReference(allThreadLocalElements_);
+                ref GCHandle current = ref start;
+                ref GCHandle newCurrent = ref start;
+#if DEBUG
+                int count = 0;
+#endif
+                ref GCHandle end = ref Unsafe.Add(ref start, length);
+
+                // Under high pressure, we don't wait time to trim, so we release all thread locals.
+                if (threadLocalTrimMilliseconds == 0)
+                {
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        GCHandle handle = current;
+                        object? target = handle.Target;
+                        if (target is null)
+                        {
+                            handle.Free();
+                            current = ref Unsafe.Add(ref current, 1);
+                            continue;
+                        }
+                        Debug.Assert(target is ThreadLocalElement);
+                        Unsafe.As<ThreadLocalElement>(target).Clear();
+                        Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
+                        newCurrent = handle;
+#if DEBUG
+                        Debug.Assert(count++ < allThreadLocalElements_.Length);
+#endif
+                        newCurrent = ref Unsafe.Add(ref newCurrent, 1);
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
+                }
+                else
+                {
+                    // Otherwise, release thread locals based on how long we've observed them to be stored.
+                    // This time is approximate, with the time set not when the object is stored but when we see it during a Trim,
+                    // so it takes at least two Trim calls (and thus two gen2 GCs) to drop an object, unless we're in high memory pressure.
+
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        GCHandle handle = current;
+                        object? target = handle.Target;
+                        if (target is null)
+                        {
+                            handle.Free();
+                            current = ref Unsafe.Add(ref current, 1);
+                            continue;
+                        }
+                        Debug.Assert(target is ThreadLocalElement);
+                        Unsafe.As<ThreadLocalElement>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
+                        Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
+                        newCurrent = handle;
+#if DEBUG
+                        Debug.Assert(count++ < allThreadLocalElements_.Length);
+#endif
+                        newCurrent = ref Unsafe.Add(ref newCurrent, 1);
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
+                }
+
+                int count_ = (int)Unsafe.ByteOffset(ref start, ref newCurrent) / Unsafe.SizeOf<GCHandle>();
+#if DEBUG
+                Debug.Assert(count_ == count);
+#endif
+                allThreadLocalElementsCount = count_;
+                allThreadLocalElements = allThreadLocalElements_;
+            }
 
             T[]? globalReserve_;
             do
@@ -409,31 +450,39 @@ namespace Enderlook.Pools
                 allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
             } while (allThreadLocalElements_ is null);
 
-            int count = allThreadLocalElementsCount;
-            if (unchecked((uint)count >= (uint)allThreadLocalElements_.Length))
+            int count_ = allThreadLocalElementsCount;
+            if (unchecked((uint)count_ >= (uint)allThreadLocalElements_.Length))
             {
-                count = 0;
-                for (int i = 0; i < allThreadLocalElements_.Length; i++)
+                ref GCHandle current = ref Utils.GetArrayDataReference(allThreadLocalElements_);
+                ref GCHandle end = ref Unsafe.Add(ref current, allThreadLocalElements_.Length);
+
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
                 {
-                    GCHandle handle = allThreadLocalElements_[i];
+                    GCHandle handle = current;
+                    if (!handle.IsAllocated)
+                        Console.WriteLine(1);
+                    Debug.Assert(handle.IsAllocated);
                     object? target = handle.Target;
                     if (target is null)
                     {
                         handle.Free();
-                        continue;
+                        current = GCHandle.Alloc(slot, GCHandleType.Weak);
+                        goto end;
                     }
-                    allThreadLocalElements_[count++] = handle;
+                    current = ref Unsafe.Add(ref current, 1);
                 }
 
-                if (count < allThreadLocalElements_.Length)
-                    Array.Clear(allThreadLocalElements_, count, allThreadLocalElements_.Length - count);
+                if (count_ < allThreadLocalElements_.Length)
+                    Array.Clear(allThreadLocalElements_, count_, allThreadLocalElements_.Length - count_);
                 else
                     Array.Resize(ref allThreadLocalElements_, allThreadLocalElements_.Length * 2);
             }
 
-            allThreadLocalElements_[count] = GCHandle.Alloc(slot, GCHandleType.Weak);
-            allThreadLocalElementsCount = count + 1;
+            Debug.Assert(count_ < allThreadLocalElements_.Length);
+            Unsafe.Add(ref Utils.GetArrayDataReference(allThreadLocalElements_), count_) = GCHandle.Alloc(slot, GCHandleType.Weak);
+            allThreadLocalElementsCount = count_ + 1;
 
+        end:
             allThreadLocalElements = allThreadLocalElements_;
             return slot;
         }
@@ -521,7 +570,8 @@ namespace Enderlook.Pools
                         millisecondsTimeStamp = 0;
                     }
 
-                    items[count_++] = element;
+                    Debug.Assert(count_ < items.Length);
+                    Unsafe.Add(ref Utils.GetArrayDataReference(items), count_++) = element;
                     enqueued = true;
                 }
 
@@ -543,11 +593,13 @@ namespace Enderlook.Pools
                 int newCount = count_ - 1;
                 if (unchecked((uint)newCount < (uint)items.Length))
                 {
-                    element = items[newCount];
+                    Debug.Assert(newCount < items.Length);
+                    ref T slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
+                    element = slot;
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
                     if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
 #endif
-                        items[newCount] = default;
+                        slot = default;
                     count = newCount;
                     return true;
                 }
@@ -579,7 +631,8 @@ namespace Enderlook.Pools
                 bool found;
                 if (globalCount > 0)
                 {
-                    element = globalReserve_[--globalCount];
+                    Debug.Assert(globalCount - 1 < globalReserve_.Length);
+                    element = Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), --globalCount);
                     found = true;
 
                     T[] items = array;
@@ -641,7 +694,8 @@ namespace Enderlook.Pools
 #endif
                 globalCount += count_;
                 count_ = 0;
-                globalReserve_[globalCount++] = obj;
+                Debug.Assert(globalCount < globalReserve_.Length);
+                Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), globalCount++) = obj;
 
                 globalReserveCount = globalCount;
                 globalReserve = globalReserve_;
