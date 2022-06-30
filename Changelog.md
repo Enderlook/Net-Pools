@@ -1,6 +1,6 @@
 # Changelog
 
-##
+## v0.2.3
 - Improve documentation.
 - Fix documentation typos.
 - Fix error when using value types without parameterless constructor.
@@ -8,6 +8,7 @@
 - Minimal performance improvements.
 - Tweak exception message thrown when a public parameterless constructor is not found for reference types and no factory was provided.
 - Fix trimming not preserving public parameterless constructors of types used in pools.
+- Fix `ObjectPool<T>.Shared` throwing when `T` is a value type.
 
 ## v0.2.2
 - Add support for trimming.

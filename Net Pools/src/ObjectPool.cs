@@ -11,9 +11,9 @@ namespace Enderlook.Pools
     {
         private static class Container
         {
-            public static readonly ObjectPool<T> shared = (ObjectPool<T>)Activator.CreateInstance(typeof(T).IsValueType ?
+            public static readonly ObjectPool<T> shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
                 typeof(ThreadLocalOverPerCoreLockedStacksValueObjectPool<>)
-                : typeof(ThreadLocalOverPerCoreLockedStacksObjectPool<>)
+                : typeof(ThreadLocalOverPerCoreLockedStacksObjectPool<>))
                 .MakeGenericType(typeof(T)))!;
         }
 
