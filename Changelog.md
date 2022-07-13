@@ -1,5 +1,8 @@
 # Changelog
 
+##
+- Fix documentation typos.
+
 ## v0.2.3
 - Improve documentation.
 - Fix documentation typos.

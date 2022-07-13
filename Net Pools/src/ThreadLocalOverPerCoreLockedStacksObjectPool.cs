@@ -9,7 +9,7 @@ namespace Enderlook.Pools;
 /// <summary>
 /// A fast and thread-safe object pool to store a large amount of objects.
 /// </summary>
-/// <typeparam name="T">Type of object to pool</typeparam>
+/// <typeparam name="T">Type of object to pool.</typeparam>
 internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<T> : ObjectPool<T> where T : class
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
