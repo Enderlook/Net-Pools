@@ -6,7 +6,7 @@ namespace Enderlook.Pools;
 /// <summary>
 /// Represent a pool of objects.
 /// </summary>
-/// <typeparam name="T">Type of object to pool</typeparam>
+/// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ObjectPool<T>
 {
     private static class Container
