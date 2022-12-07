@@ -31,15 +31,20 @@ internal static class CompilationHelper
                 if (applicationType is null) // The trimmer has removed the type, so think about the worst possible case.
                     goto isDisabled;
 
+#pragma warning disable IL2075 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The return value of the source method does not have matching annotations.
+                PropertyInfo? isEditorProperty = applicationType.GetProperty("isEditor", flags);
+#pragma warning restore IL2075 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The return value of the source method does not have matching annotations.
+                // Editor always support dynamic compilation.
+                if (isEditorProperty is not null && isEditorProperty?.GetValue(null) is bool value && value)
+                    break;
+
+#pragma warning disable IL2075 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The return value of the source method does not have matching annotations.
                 PropertyInfo? platformProperty = applicationType.GetProperty("platform", flags);
+#pragma warning restore IL2075 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The return value of the source method does not have matching annotations.
                 if (platformProperty is null) // The trimmer has removed the property, so think about the worst possible case.
                     goto isDisabled;
 
-                PropertyInfo? isEditorProperty = applicationType.GetProperty("isEditor", flags);
-                if (isEditorProperty is null) // The trimmer has removed the property, so think about the worst possible case.
-                    goto isDisabled;
-
-                if (platformProperty.GetValue(null)!.ToString() == "WebGLPlayer" && !(bool)isEditorProperty.GetValue(null)!)
+                if (platformProperty.GetValue(null)?.ToString() == "WebGLPlayer")
                     goto isDisabled;
             }
         }
