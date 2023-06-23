@@ -148,7 +148,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<T> : Obj
         static T FillFromGlobalReserve()
         {
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-        int currentProcessorId = Thread.GetCurrentProcessorId();
+            int currentProcessorId = Thread.GetCurrentProcessorId();
 #else
             int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
 #endif
@@ -434,9 +434,9 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<T> : Obj
                             goto next;
                         }
                     }
-                    simpleClean:
-                        Array.Clear(globalReserve_, newGlobalCount, toRemove);
-                    next:;
+                simpleClean:
+                    Array.Clear(globalReserve_, newGlobalCount, toRemove);
+                next:;
                 }
             }
         }
@@ -742,7 +742,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<T> : Obj
                 millisecondsTimeStamp + (trimMilliseconds / 4) // Give the remaining items a bit more time.
                 : 0;
 
-            end:
+        end:
             count = count_;
         }
     }
