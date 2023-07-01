@@ -11,7 +11,7 @@ public abstract class ObjectPool<T>
 {
     private static class Container
     {
-        public static readonly ObjectPool<T> shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
+        public static readonly ObjectPool<T> Shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
             typeof(ThreadLocalOverPerCoreLockedStacksValueObjectPool<>)
             : typeof(ThreadLocalOverPerCoreLockedStacksObjectPool<>))
             .MakeGenericType(typeof(T)))!;
@@ -27,9 +27,10 @@ public abstract class ObjectPool<T>
     ///     <item>Is thread-safe.</item>
     /// </list>
     /// </summary>
-    public static ObjectPool<T> Shared {
+    public static ObjectPool<T> Shared
+    {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Container.shared;
+        get => Container.Shared;
     }
 
     /// <summary>

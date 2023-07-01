@@ -13,7 +13,9 @@ internal static class CompilationHelper
     public const int SystemReflectionEmitDynamicMethod = 2;
     public static readonly int DynamicCompilationMode;
 
+#pragma warning disable CA1825 // Avoid zero-length array allocations
     public static readonly ParameterExpression[] EmptyParameters = new ParameterExpression[0];
+#pragma warning restore CA1825 // Avoid zero-length array allocations
 
     static CompilationHelper()
     {

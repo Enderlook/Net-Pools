@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -10,7 +11,11 @@ namespace Enderlook.Pools;
 /// A fast and thread-safe object pool to store a large amount of objects.
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
-internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<T> : ObjectPool<T> where T : class
+internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+    T> : ObjectPool<T> where T : class
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
