@@ -3,6 +3,7 @@
 ##
 - Fix documentation typos.
 - Fix accidental free of some objects when returned.
+- Improve exception messages.
 
 ## v0.2.3
 - Improve documentation.

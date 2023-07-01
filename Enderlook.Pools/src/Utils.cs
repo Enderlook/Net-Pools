@@ -46,8 +46,8 @@ internal static class Utils
     }
 
     [DoesNotReturn]
-    public static void ThrowArgumentNullException_Obj()
-        => throw new ArgumentNullException("obj");
+    public static void ThrowArgumentNullException_Element()
+        => throw new ArgumentNullException("element");
 
     public static void ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative()
         => throw new ArgumentOutOfRangeException("initialColdCapacity", "Can't be negative.");

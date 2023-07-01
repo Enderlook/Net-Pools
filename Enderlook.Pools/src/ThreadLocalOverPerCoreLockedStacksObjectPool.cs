@@ -180,7 +180,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
     /// <param name="element">Object to return.</param>
     public override void Return(T element)
     {
-        if (element is null) Utils.ThrowArgumentNullException_Obj();
+        if (element is null) Utils.ThrowArgumentNullException_Element();
         Debug.Assert(element is not null);
 
         // Store the element into the thread local field.
