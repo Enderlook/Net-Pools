@@ -2,6 +2,7 @@
 
 ##
 - Fix documentation typos.
+- Fix accidental free of some objects when returned.
 
 ## v0.2.3
 - Improve documentation.

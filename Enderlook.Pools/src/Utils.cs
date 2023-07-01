@@ -38,7 +38,6 @@ internal static class Utils
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref T GetArrayDataReference<T>(T[] array)
     {
-        Debug.Assert(array.Length > 0);
 #if NET5_0_OR_GREATER
         return ref MemoryMarshal.GetArrayDataReference(array);
 #else

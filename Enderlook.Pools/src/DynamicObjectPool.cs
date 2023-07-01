@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -461,27 +460,30 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
         Debug.Assert(reserveCount < reserve_.Length);
         ref ObjectWrapper<T?> currentReserve = ref Unsafe.Add(ref startReserve, reserveCount);
         currentReserve.Value = obj;
-
-        ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-        ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
-
-        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        currentReserve = ref Unsafe.Add(ref currentReserve, 1);
+        if (!Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
         {
-            // We don't use an optimistically not synchronized initial read in this part.
-            // This is because we expect the majority of the array to be filled.
-            // So it's not worth doing an initial read to check that.
-            T? element = Interlocked.Exchange(ref current.Value, null);
-            if (element is not null)
+            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
+
+            while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
+                // We don't use an optimistically not synchronized initial read in this part.
+                // This is because we expect the majority of the array to be filled.
+                // So it's not worth doing an initial read to check that.
+                T? element = Interlocked.Exchange(ref current.Value, null);
+                if (element is not null)
+                {
 #if DEBUG
-                Debug.Assert(count++ < reserve_.Length);
+                    Debug.Assert(count++ < reserve_.Length);
 #endif
-                currentReserve.Value = element;
-                currentReserve = ref Unsafe.Add(ref currentReserve, 1);
-                if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
-                    break;
+                    currentReserve = ref Unsafe.Add(ref currentReserve, 1);
+                    currentReserve.Value = element;
+                    if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
+                        break;
+                }
+                current = ref Unsafe.Add(ref current, 1);
             }
-            current = ref Unsafe.Add(ref current, 1);
         }
 
         int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
