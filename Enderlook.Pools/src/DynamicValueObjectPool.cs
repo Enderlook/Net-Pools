@@ -368,12 +368,16 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
     [MethodImpl(MethodImplOptions.NoInlining)]
     private T FillFromReserve()
     {
+        SpinWait spinWait = new();
         ValueObjectWrapper<T>[] items = array;
         T[]? reserve_;
-        do
+        while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
-        } while (reserve_ is null);
+            if (reserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
 
         int oldCount = reserveCount;
 #if DEBUG
@@ -431,12 +435,16 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SendToReserve(T obj)
     {
+        SpinWait spinWait = new();
         ValueObjectWrapper<T>[] items = array;
         T[]? reserve_;
-        do
+        while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
-        } while (reserve_ is null);
+            if (reserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
 
 #if DEBUG
         int count = reserveCount;

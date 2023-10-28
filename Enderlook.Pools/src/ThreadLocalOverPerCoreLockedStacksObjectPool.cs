@@ -99,11 +99,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
             current = ref Unsafe.Add(ref current, 1);
         }
 
+        SpinWait spinWait = new();
         ObjectWrapper<T?>[]? globalReserve_;
-        do
+        while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-        } while (globalReserve_ is null);
+            if (globalReserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
         count += globalReserveCount;
         globalReserve = globalReserve_;
 
@@ -304,6 +308,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
             }
         }
 
+        SpinWait spinWait;
         {
             // Trim each of the thread local fields.
             // Note that threads may be modifying their thread local fields concurrently with this trimming happening.
@@ -311,11 +316,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
             // that we may potentially trim an object we didn't need to.
             // Both of these should be rare occurrences.
 
+            spinWait = new();
             GCHandle[]? allThreadLocalElements_;
-            do
+            while (true)
             {
                 allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
-            } while (allThreadLocalElements_ is null);
+                if (allThreadLocalElements_ is not null)
+                    break;
+                spinWait.SpinOnce();
+            }
             int length = allThreadLocalElementsCount;
 
             ref GCHandle start = ref Utils.GetArrayDataReference(allThreadLocalElements_);
@@ -386,11 +395,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
             allThreadLocalElements = allThreadLocalElements_;
         }
 
+        spinWait = new();
         ObjectWrapper<T?>[]? globalReserve_;
-        do
+        while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-        } while (globalReserve_ is null);
+            if (globalReserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
         int globalCount = globalReserveCount;
 
         if (globalCount == 0)
@@ -462,11 +475,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         ThreadLocalElement slot = new();
         threadLocalElement = slot;
 
+        SpinWait spinWait = new();
         GCHandle[]? allThreadLocalElements_;
-        do
+        while (true)
         {
             allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
-        } while (allThreadLocalElements_ is null);
+            if (allThreadLocalElements_ is not null)
+                break;
+            spinWait.SpinOnce();
+        };
 
         int count_ = allThreadLocalElementsCount;
         if (unchecked((uint)count_ >= (uint)allThreadLocalElements_.Length))
@@ -559,11 +576,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetCount()
         {
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
-                count_ = count;
-            } while (count_ == -1);
+                count_ = Volatile.Read(ref count);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
             return count_;
         }
 
@@ -572,11 +593,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         {
             ObjectWrapper<T?>[] items = array;
 
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
                 count_ = Interlocked.Exchange(ref count, -1);
-            } while (count_ == -1);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            };
 
             bool enqueued = false;
             if (unchecked((uint)count_ < (uint)items.Length))
@@ -603,11 +628,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         {
             ObjectWrapper<T?>[] items = array;
 
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
                 count_ = Interlocked.Exchange(ref count, -1);
-            } while (count_ == -1);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             T? element = null;
             int newCount = count_ - 1;
@@ -628,17 +657,24 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T? FillFromGlobalReserve()
         {
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
                 count_ = Interlocked.Exchange(ref count, -1);
-            } while (count_ == -1);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             ObjectWrapper<T?>[]? globalReserve_;
-            do
+            while (true)
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-            } while (globalReserve_ is null);
+                if (globalReserve_ is not null)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             T? element = null;
             int globalCount = globalReserveCount;
@@ -670,17 +706,24 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void MoveToGlobalReserve(T obj)
         {
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
                 count_ = Interlocked.Exchange(ref count, -1);
-            } while (count_ == -1);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             ObjectWrapper<T?>[]? globalReserve_;
-            do
+            while (true)
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-            } while (globalReserve_ is null);
+                if (globalReserve_ is not null)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             ObjectWrapper<T?>[] items = array;
             int amount = count_ + 1;
@@ -713,11 +756,15 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksObjectPool<
 
             ObjectWrapper<T?>[] items = array;
 
+            SpinWait spinWait = new();
             int count_;
-            do
+            while (true)
             {
                 count_ = Interlocked.Exchange(ref count, -1);
-            } while (count_ == -1);
+                if (count_ != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
 
             if (count_ == 0)
                 goto end;

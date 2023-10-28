@@ -374,12 +374,16 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     [MethodImpl(MethodImplOptions.NoInlining)]
     private T FillFromReserve()
     {
+        SpinWait spinWait = new();
         ObjectWrapper<T?>[] items = array;
         ObjectWrapper<T?>[]? reserve_;
-        do
+        while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
-        } while (reserve_ is null);
+            if (reserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
 
         int oldCount = reserveCount;
 #if DEBUG
@@ -438,12 +442,16 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     {
         if (obj is null) return;
 
+        SpinWait spinWait = new();
         ObjectWrapper<T?>[] items = array;
         ObjectWrapper<T?>[]? reserve_;
-        do
+        while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
-        } while (reserve_ is null);
+            if (reserve_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
 
 #if DEBUG
         int count = reserveCount;

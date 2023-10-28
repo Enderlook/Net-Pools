@@ -4,6 +4,7 @@
 - Fix documentation typos.
 - Fix accidental free of some objects when returned.
 - Improve exception messages.
+- Fix contention.
 
 ## v0.2.3
 - Improve documentation.
