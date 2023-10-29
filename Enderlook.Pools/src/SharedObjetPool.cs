@@ -763,11 +763,12 @@ internal sealed class SharedObjetPool<
             if (count_ == 0)
                 goto end;
 
+            int millisecondsTimeStamp = this.millisecondsTimeStamp;
             if (millisecondsTimeStamp == 0)
                 millisecondsTimeStamp = currentMilliseconds;
 
             if ((currentMilliseconds - millisecondsTimeStamp) <= trimMilliseconds)
-                goto end;
+                goto endAndAssign;
 
             // We've elapsed enough time since the first item went into the stack.
             // Drop the top item so it can be collected and make the stack look a little newer.
@@ -779,6 +780,8 @@ internal sealed class SharedObjetPool<
                 millisecondsTimeStamp + (trimMilliseconds / 4) // Give the remaining items a bit more time.
                 : 0;
 
+        endAndAssign:
+            this.millisecondsTimeStamp = millisecondsTimeStamp;
         end:
             count = count_;
         }
