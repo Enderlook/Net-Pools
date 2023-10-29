@@ -21,7 +21,7 @@ public abstract class ObjectPool<T>
     /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.<br/>
     /// The shared pool has the following features:
     /// <list type="bullet">
-    ///     <item>Instantiates new elements when empty using the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/>.</item>item>
+    ///     <item>Instantiates new elements when empty using the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/>.</item>
     ///     <item>Resize itself to accommodate all returned elements to the pool.</item>
     ///     <item>Periodically trims itself removing old elements from the pool (GC-triggered).</item>
     ///     <item>Is thread-safe.</item>
