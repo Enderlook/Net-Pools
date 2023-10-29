@@ -224,12 +224,10 @@ internal sealed class SharedObjetPool<
     }
 
     /// <inheritdoc cref="ObjectPool{T}.Trim(bool)"/>
-    public override void Trim(bool force = false)
-    {
-        // This method does nothing to prevent user trying to clear the singlenton.
-    }
+    public override void Trim(bool force = false) => Trim_(force);
 
     /// <inheritdoc cref="ObjectPool{T}.Trim(bool)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Trim_(bool force = false)
     {
         const int PerCoreLowTrimAfterMilliseconds = 60 * 1000; // Trim after 60 seconds for low pressure.
