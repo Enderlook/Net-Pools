@@ -90,9 +90,15 @@ internal sealed class SharedValueObjectPool<
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
+        PerCoreStack[] perCoreStacks_ = perCoreStacks;
+        ref PerCoreStack current = ref Utils.GetArrayDataReference(perCoreStacks_);
+        ref PerCoreStack end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
         int count = 0;
-        for (int i = 0; i < perCoreStacks.Length; i++)
-            count += perCoreStacks[i].GetCount();
+        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        {
+            count += current.GetCount();
+            current = ref Unsafe.Add(ref current, 1);
+        }
 
         SpinWait spinWait = new();
         T[]? globalReserve_;
