@@ -236,8 +236,8 @@ internal sealed class SharedValueObjectPool<
 
         const int ReserveLowTrimAfterMilliseconds = 90 * 1000; // Trim after 90 seconds for low pressure.
         const int ReserveMediumTrimAfterMilliseconds = 45 * 1000; // Trim after 45 seconds for low pressure.
-        const float ReserveLowTrimPercentage = .10f; // Trim 10% of elements for low pressure;
-        const float ReserveMediumTrimPercentage = .30f; // Trim 30% of elements for moderate pressure;
+        const float ReserveLowTrimPercentage = .10f; // Trim 10% of elements for low pressure.
+        const float ReserveMediumTrimPercentage = .30f; // Trim 30% of elements for moderate pressure.
 
         int currentMilliseconds = Environment.TickCount;
 
