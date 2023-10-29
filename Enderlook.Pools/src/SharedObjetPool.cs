@@ -505,10 +505,7 @@ internal sealed class SharedObjetPool<
                 current = ref Unsafe.Add(ref current, 1);
             }
 
-            if (count_ < allThreadLocalElements_.Length)
-                Array.Clear(allThreadLocalElements_, count_, allThreadLocalElements_.Length - count_);
-            else
-                Array.Resize(ref allThreadLocalElements_, allThreadLocalElements_.Length * 2);
+            Array.Resize(ref allThreadLocalElements_, allThreadLocalElements_.Length * 2);
         }
 
         Debug.Assert(count_ < allThreadLocalElements_.Length);
