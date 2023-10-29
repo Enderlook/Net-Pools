@@ -492,8 +492,7 @@ internal sealed class SharedValueObjectPool<
                 object? target = handle.Target;
                 if (target is null)
                 {
-                    handle.Free();
-                    current = GCHandle.Alloc(slot, GCHandleType.Weak);
+                    handle.Target = slot;
                     goto end;
                 }
                 current = ref Unsafe.Add(ref current, 1);
