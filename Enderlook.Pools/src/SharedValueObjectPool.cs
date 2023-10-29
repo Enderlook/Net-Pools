@@ -488,8 +488,6 @@ internal sealed class SharedValueObjectPool<
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 GCHandle handle = current;
-                if (!handle.IsAllocated)
-                    Console.WriteLine(1);
                 Debug.Assert(handle.IsAllocated);
                 object? target = handle.Target;
                 if (target is null)
