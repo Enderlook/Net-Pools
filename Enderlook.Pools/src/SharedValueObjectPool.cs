@@ -345,7 +345,7 @@ internal sealed class SharedValueObjectPool<
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
-                    Debug.Assert(count++ < allThreadLocalElements_.Length);
+                    Debug.Assert(count++ < length);
 #endif
                     newCurrent = ref Unsafe.Add(ref newCurrent, 1);
                     current = ref Unsafe.Add(ref current, 1);
@@ -372,7 +372,7 @@ internal sealed class SharedValueObjectPool<
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
-                    Debug.Assert(count++ < allThreadLocalElements_.Length);
+                    Debug.Assert(count++ < length);
 #endif
                     newCurrent = ref Unsafe.Add(ref newCurrent, 1);
                     current = ref Unsafe.Add(ref current, 1);
