@@ -8,6 +8,7 @@
 - Micro optimization during first call of `ObjectPool<T>.Shared.Return(T)` in an specific thread.
 - Micro optimization during automatic trimming of `ObjectPool<T>.Shared`.
 - Support `Trim(bool)` in `ObjectPool<T>.Shared`.
+- Fix `ObjectPool<T>.Object.Rent()` not working when `T` is a value type.
 
 ## v0.2.3
 - Improve documentation.

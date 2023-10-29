@@ -637,6 +637,7 @@ internal sealed class SharedValueObjectPool<
                 return true;
             }
 
+            count = count_;
 #if NET5_0_OR_GREATER
             Unsafe.SkipInit(out element);
 #else
