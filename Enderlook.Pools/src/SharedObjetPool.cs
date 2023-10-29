@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -12,11 +11,11 @@ namespace Enderlook.Pools;
 /// A fast and thread-safe object pool to store a large amount of objects.
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
-internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
+internal sealed class SharedObjetPool<
 #if NET5_0_OR_GREATER
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 #endif
-    T> : ObjectPool<T> where T : struct
+    T> : ObjectPool<T> where T : class
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
@@ -68,7 +67,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
     /// When all <see cref="perCoreStacks"/> get empty, one of them is fulled with objects from this reserve.<br/>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.
     /// </summary>
-    private static T[]? globalReserve = new T[MaxObjectsPerCore];
+    private static ObjectWrapper<T?>[]? globalReserve = new ObjectWrapper<T?>[MaxObjectsPerCore];
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="globalReserve"/>.
@@ -80,22 +79,28 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
     /// </summary>
     private static int globalReserveMillisecondsTimeStamp;
 
-    static ThreadLocalOverPerCoreLockedStacksValueObjectPool()
+    static SharedObjetPool()
     {
         for (int i = 0; i < perCoreStacks.Length; i++)
-            perCoreStacks[i] = new PerCoreStack(new T[MaxObjectsPerCore]);
+            perCoreStacks[i] = new PerCoreStack(new ObjectWrapper<T?>[MaxObjectsPerCore]);
         GCCallback _ = new();
     }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
+        PerCoreStack[] perCoreStacks_ = perCoreStacks;
+        ref PerCoreStack current = ref Utils.GetArrayDataReference(perCoreStacks_);
+        ref PerCoreStack end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
         int count = 0;
-        for (int i = 0; i < perCoreStacks.Length; i++)
-            count += perCoreStacks[i].GetCount();
+        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        {
+            count += current.GetCount();
+            current = ref Unsafe.Add(ref current, 1);
+        }
 
         SpinWait spinWait = new();
-        T[]? globalReserve_;
+        ObjectWrapper<T?>[]? globalReserve_;
         while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -117,10 +122,10 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
         if (threadLocalElement_ is not null)
         {
             T? element = threadLocalElement_.Value;
-            if (element is T element_)
+            if (element is not null)
             {
                 threadLocalElement_.Value = null;
-                return element_;
+                return element;
             }
         }
 
@@ -139,7 +144,8 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
         {
             Debug.Assert(index < perCoreStacks_.Length);
             // TODO: This Unsafe.Add could be improved to avoid the under the hood mulitplication (`base + offset * size` and just do `base + offset`).
-            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPop(out T element))
+            T? element = Unsafe.Add(ref perCoreStacks_Root, index).TryPop();
+            if (element is not null)
                 return element;
 
             if (++index == perCoreStacks_.Length)
@@ -163,7 +169,8 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 #endif
             int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
 
-            if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out T element))
+            T? element = Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve();
+            if (element is not null)
                 return element;
             // Finally, instantiate a new object.
             return ObjectPoolHelper<T>.Create();
@@ -172,23 +179,22 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 
     /// <summary>
     /// Return rented object to pool.<br/>
-    /// If the pool is full, the object will be discarded.<br/>
-    /// Default instances are discarded.
+    /// If the pool is full, the object will be discarded.
     /// </summary>
     /// <param name="element">Object to return.</param>
     public override void Return(T element)
     {
-        if (EqualityComparer<T>.Default.Equals(element, default))
-            return;
+        if (element is null) Utils.ThrowArgumentNullException_Element();
+        Debug.Assert(element is not null);
 
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
-        ThreadLocalElement threadLocalElement_ = threadLocalElement ?? ThreadLocalOverPerCoreLockedStacksValueObjectPool<T>.InitializeThreadLocalElement();
+        ThreadLocalElement threadLocalElement_ = threadLocalElement ?? SharedObjetPool<T>.InitializeThreadLocalElement();
         T? previous = threadLocalElement_.Value;
         threadLocalElement_.Value = element;
         threadLocalElement_.MillisecondsTimeStamp = 0;
-        if (previous is T previous_)
+        if (previous is not null)
         {
             // Try to store the object from one of the per-core stacks.
             PerCoreStack[] perCoreStacks_ = perCoreStacks;
@@ -204,7 +210,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
             for (int i = 0; i < perCoreStacks_.Length; i++)
             {
                 Debug.Assert(index < perCoreStacks_.Length);
-                if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(previous_))
+                if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(previous))
                     return;
 
                 if (++index == perCoreStacks_.Length)
@@ -213,7 +219,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 
             // Next, transfer a per-core stack to the global reserve.
             Debug.Assert(index < perCoreStacks_.Length);
-            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous_);
+            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous);
         }
     }
 
@@ -347,7 +353,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
-                    Debug.Assert(count++ < allThreadLocalElements_.Length);
+                    Debug.Assert(count++ < length);
 #endif
                     newCurrent = ref Unsafe.Add(ref newCurrent, 1);
                     current = ref Unsafe.Add(ref current, 1);
@@ -374,7 +380,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
-                    Debug.Assert(count++ < allThreadLocalElements_.Length);
+                    Debug.Assert(count++ < length);
 #endif
                     newCurrent = ref Unsafe.Add(ref newCurrent, 1);
                     current = ref Unsafe.Add(ref current, 1);
@@ -390,7 +396,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
         }
 
         spinWait = new();
-        T[]? globalReserve_;
+        ObjectWrapper<T?>[]? globalReserve_;
         while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -418,7 +424,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 #endif
                 }
                 else
-                    globalReserve_ = new T[InitialGlobalReserveCapacity];
+                    globalReserve_ = new ObjectWrapper<T?>[InitialGlobalReserveCapacity];
                 globalReserveMillisecondsTimeStamp = 0;
             }
             else
@@ -446,7 +452,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                         else
                         {
                             int newLength = globalLength / 2;
-                            T[] array = new T[newLength];
+                            ObjectWrapper<T?>[] array = new ObjectWrapper<T?>[newLength];
                             Array.Copy(globalReserve_, array, newGlobalCount);
                             globalReserve_ = array;
                             goto next;
@@ -556,11 +562,11 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 
     private struct PerCoreStack
     {
-        private readonly T[] array;
+        private readonly ObjectWrapper<T?>[] array;
         private int count;
         private int millisecondsTimeStamp;
 
-        public PerCoreStack(T[] array)
+        public PerCoreStack(ObjectWrapper<T?>[] array)
         {
             this.array = array;
             count = 0;
@@ -585,7 +591,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryPush(T element)
         {
-            T[] items = array;
+            ObjectWrapper<T?>[] items = array;
 
             SpinWait spinWait = new();
             int count_;
@@ -607,8 +613,9 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                     millisecondsTimeStamp = 0;
                 }
 
+                // Note: If at some point we replace ObjectWrapper<T?> with T?[] or object?[] then replace this with a normal array indexing on .NET < 5.
                 Debug.Assert(count_ < items.Length);
-                Unsafe.Add(ref Utils.GetArrayDataReference(items), count_++) = element;
+                Unsafe.Add(ref Utils.GetArrayDataReference(items), count_++).Value = element;
                 enqueued = true;
             }
 
@@ -617,9 +624,9 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryPop(out T element)
+        public T? TryPop()
         {
-            T[] items = array;
+            ObjectWrapper<T?>[] items = array;
 
             SpinWait spinWait = new();
             int count_;
@@ -629,32 +636,26 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 if (count_ != -1)
                     break;
                 spinWait.SpinOnce();
-            };
+            }
 
+            T? element = null;
             int newCount = count_ - 1;
             if (unchecked((uint)newCount < (uint)items.Length))
             {
+                // Note: If at some point we replace ObjectWrapper<T?> with T?[] or object?[] then replace this with a normal array indexing on .NET < 5.
                 Debug.Assert(newCount < items.Length);
-                ref T slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
-                element = slot;
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-#endif
-                    slot = default;
-                count = newCount;
-                return true;
+                ref ObjectWrapper<T?> slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
+                element = slot.Value;
+                slot.Value = null;
+                count_ = newCount;
             }
 
-#if NET5_0_OR_GREATER
-            Unsafe.SkipInit(out element);
-#else
-            element = default;
-#endif
-            return false;
+            count = count_;
+            return element;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool FillFromGlobalReserve(out T element)
+        public T? FillFromGlobalReserve()
         {
             SpinWait spinWait = new();
             int count_;
@@ -666,7 +667,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 spinWait.SpinOnce();
             }
 
-            T[]? globalReserve_;
+            ObjectWrapper<T?>[]? globalReserve_;
             while (true)
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -675,15 +676,16 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 spinWait.SpinOnce();
             }
 
+            T? element = null;
             int globalCount = globalReserveCount;
-            bool found;
             if (globalCount > 0)
             {
+                // Note: If at some point we replace ObjectWrapper<T?> with T?[] or object?[] then replace this with a normal array indexing on .NET < 5.
                 Debug.Assert(globalCount - 1 < globalReserve_.Length);
-                element = Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), --globalCount);
-                found = true;
+                element = Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), --globalCount).Value;
+                Debug.Assert(element is not null);
 
-                T[] items = array;
+                ObjectWrapper<T?>[] items = array;
 
                 int length = Math.Min(MaxObjectsPerCore - count_, globalCount);
                 int start = globalCount - length;
@@ -695,19 +697,10 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
 
                 globalReserveCount = globalCount;
             }
-            else
-            {
-                found = false;
-#if NET5_0_OR_GREATER
-                Unsafe.SkipInit(out element);
-#else
-                element = default;
-#endif
-            }
 
             globalReserve = globalReserve_;
             count = count_;
-            return found;
+            return element;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -723,7 +716,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 spinWait.SpinOnce();
             }
 
-            T[]? globalReserve_;
+            ObjectWrapper<T?>[]? globalReserve_;
             while (true)
             {
                 globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -732,25 +725,23 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 spinWait.SpinOnce();
             }
 
-            T[] items = array;
+            ObjectWrapper<T?>[] items = array;
             int amount = count_ + 1;
             int globalCount = globalReserveCount;
             int newGlobalCount = globalCount + amount;
             if (unchecked((uint)newGlobalCount >= (uint)globalReserve_.Length))
                 Array.Resize(ref globalReserve_, globalReserve_.Length * 2);
             Array.Copy(items, 0, globalReserve_, globalCount, count_);
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-#endif
 #if NET6_0_OR_GREATER
-                Array.Clear(items);
+            Array.Clear(items);
 #else
-                Array.Clear(items, 0, items.Length);
+            Array.Clear(items, 0, items.Length);
 #endif
             globalCount += count_;
             count_ = 0;
+            // Note: If at some point we replace ObjectWrapper<T?> with T?[] or object?[] then replace this with a normal array indexing on .NET < 5.
             Debug.Assert(globalCount < globalReserve_.Length);
-            Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), globalCount++) = obj;
+            Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), globalCount++).Value = obj;
 
             globalReserveCount = globalCount;
             globalReserve = globalReserve_;
@@ -763,7 +754,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
             if (count == 0)
                 return;
 
-            T[] items = array;
+            ObjectWrapper<T?>[] items = array;
 
             SpinWait spinWait = new();
             int count_;
@@ -773,7 +764,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
                 if (count_ != -1)
                     break;
                 spinWait.SpinOnce();
-            };
+            }
 
             if (count_ == 0)
                 goto end;
@@ -803,7 +794,7 @@ internal sealed class ThreadLocalOverPerCoreLockedStacksValueObjectPool<
     {
         ~GCCallback()
         {
-            ThreadLocalOverPerCoreLockedStacksValueObjectPool<T>.Trim_();
+            SharedObjetPool<T>.Trim_();
             GC.ReRegisterForFinalize(this);
         }
     }

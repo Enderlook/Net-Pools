@@ -12,8 +12,8 @@ public abstract class ObjectPool<T>
     private static class Container
     {
         public static readonly ObjectPool<T> Shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
-            typeof(ThreadLocalOverPerCoreLockedStacksValueObjectPool<>)
-            : typeof(ThreadLocalOverPerCoreLockedStacksObjectPool<>))
+            typeof(SharedValueObjectPool<>)
+            : typeof(SharedObjetPool<>))
             .MakeGenericType(typeof(T)))!;
     }
 
