@@ -190,7 +190,7 @@ internal sealed class SharedObjetPool<
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
-        ThreadLocalElement threadLocalElement_ = threadLocalElement ?? SharedObjetPool<T>.InitializeThreadLocalElement();
+        ThreadLocalElement threadLocalElement_ = threadLocalElement ?? InitializeThreadLocalElement();
         T? previous = threadLocalElement_.Value;
         threadLocalElement_.Value = element;
         threadLocalElement_.MillisecondsTimeStamp = 0;
