@@ -11,7 +11,7 @@ namespace Enderlook.Pools;
 /// A fast and thread-safe object pool to store a large amount of objects.
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
-internal sealed class SharedObjetPool<
+internal sealed class SharedObjectPool<
 #if NET5_0_OR_GREATER
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 #endif
@@ -79,7 +79,7 @@ internal sealed class SharedObjetPool<
     /// </summary>
     private static int globalReserveMillisecondsTimeStamp;
 
-    static SharedObjetPool()
+    static SharedObjectPool()
     {
         for (int i = 0; i < perCoreStacks.Length; i++)
             perCoreStacks[i] = new PerCoreStack(new ObjectWrapper<T?>[MaxObjectsPerCore]);
@@ -789,7 +789,7 @@ internal sealed class SharedObjetPool<
     {
         ~GCCallback()
         {
-            SharedObjetPool<T>.Trim_();
+            SharedObjectPool<T>.Trim_();
             GC.ReRegisterForFinalize(this);
         }
     }

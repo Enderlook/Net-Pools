@@ -13,7 +13,7 @@ public abstract class ObjectPool<T>
     {
         public static readonly ObjectPool<T> Shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
             typeof(SharedValueObjectPool<>)
-            : typeof(SharedObjetPool<>))
+            : typeof(SharedObjectPool<>))
             .MakeGenericType(typeof(T)))!;
     }
 
