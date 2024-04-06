@@ -22,7 +22,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     /// Storage for the pool objects.<br/>
     /// The array is not an stack so the whole array must be traversed to find objects.
     /// </summary>
-    private readonly ObjectWrapper<T?>[] array;
+    private readonly ObjectWrapper[] array;
 
     /// <summary>
     /// The first item is stored in a dedicated field because we expect to be able to satisfy most requests from it.
@@ -36,7 +36,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.<br/>
     /// However, those operations only moves the first half of the array to prevent a point where this is executed on each rent or return.
     /// </summary>
-    private ObjectWrapper<T?>[]? reserve;
+    private ObjectWrapper[]? reserve;
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="reserve"/>.
@@ -71,10 +71,10 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
         if (initialColdCapacity < 0) Utils.ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative();
 
         this.factory = factory ?? ObjectPoolHelper<T>.Factory;
-        array = new ObjectWrapper<T?>[hotCapacity - 1]; // -1 due to firstElement.
-        reserve = new ObjectWrapper<T?>[initialColdCapacity];
+        array = new ObjectWrapper[hotCapacity - 1]; // -1 due to firstElement.
+        reserve = new ObjectWrapper[initialColdCapacity];
 
-        GCCallback _ = new(this);
+        GCCallback<T> _ = new(this);
     }
 
     /// <summary>
@@ -111,9 +111,9 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     public override int ApproximateCount()
     {
         int count = firstElement is null ? 0 : 1;
-        ObjectWrapper<T?>[] items = array;
-        ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-        ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+        ObjectWrapper[] items = array;
+        ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+        ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
             if (current.Value is not null)
@@ -135,15 +135,16 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
         if (element is null || element != Interlocked.CompareExchange(ref firstElement, null, element))
         {
             // Next, we look at all remaining elements.
-            ObjectWrapper<T?>[] items = array;
-            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+            ObjectWrapper[] items = array;
+            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 // Note that intitial read are optimistically not synchronized. This is intentional.
                 // We will interlock only when we have a candidate.
                 // In a worst case we may miss some recently returned objects.
-                element = current.Value;
+                Debug.Assert(current.Value is null or T);
+                element = Unsafe.As<T?>(current.Value);
                 if (element is not null && element == Interlocked.CompareExchange(ref current.Value, null, element))
                     break;
                 current = ref Unsafe.Add(ref current, 1);
@@ -169,9 +170,9 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
             firstElement = element;
         else
         {
-            ObjectWrapper<T?>[] items = array;
-            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length);
+            ObjectWrapper[] items = array;
+            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 if (current.Value is null)
@@ -210,7 +211,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
 
         firstElement = null; // We always trim the first element.
 
-        ObjectWrapper<T?>[] items = array;
+        ObjectWrapper[] items = array;
         int length = items.Length;
 
         int arrayTrimMilliseconds;
@@ -261,9 +262,9 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
 
             if (arrayTrimCount != length)
             {
-                ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
                 Debug.Assert(items.Length == length);
-                ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, length);
+                ref ObjectWrapper end = ref Unsafe.Add(ref current, length);
                 while (Unsafe.IsAddressLessThan(ref current, ref end))
                 {
                     if (current.Value is not null)
@@ -300,7 +301,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
             if (reserveTrimPercentage == 1)
             {
                 Debug.Assert(reserveTrimMilliseconds == 0);
-                ObjectWrapper<T?>[]? reserve_;
+                ObjectWrapper[]? reserve_;
                 do
                 {
                     reserve_ = Interlocked.Exchange(ref reserve, null);
@@ -316,7 +317,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
 #endif
                 }
                 else
-                    reserve_ = new ObjectWrapper<T?>[reserve_.Length];
+                    reserve_ = new ObjectWrapper[reserve_.Length];
 
                 reserveMillisecondsTimeStamp = 0;
                 reserveCount = reserveCount_;
@@ -333,7 +334,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
                     // This time is approximate, with the time set not when the element is stored but when we see it during a Trim,
                     // so it takes at least two Trim calls (and thus two gen2 GCs) to drop elements, unless we're in high memory pressure.
 
-                    ObjectWrapper<T?>[]? reserve_;
+                    ObjectWrapper[]? reserve_;
                     do
                     {
                         reserve_ = Interlocked.Exchange(ref reserve, null);
@@ -355,14 +356,14 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
 
                         Debug.Assert(ReserveShrinkFactorToStart >= ReserveShrinkFactor);
                         int newLength = Math.Min(reserveLength / ReserveShrinkFactor, items.Length);
-                        ObjectWrapper<T?>[] array = new ObjectWrapper<T?>[newLength];
+                        ObjectWrapper[] array = new ObjectWrapper[newLength];
                         Array.Copy(reserve_, array, newReserveCount);
                         reserve_ = array;
                         goto next2;
                     }
-                    simpleClean:
+                simpleClean:
                     Array.Clear(reserve_, newReserveCount, toRemove);
-                    next2:;
+                next2:;
 
                     reserveCount = reserveCount_;
                     reserve = reserve_;
@@ -375,8 +376,8 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     private T FillFromReserve()
     {
         SpinWait spinWait = new();
-        ObjectWrapper<T?>[] items = array;
-        ObjectWrapper<T?>[]? reserve_;
+        ObjectWrapper[] items = array;
+        ObjectWrapper[]? reserve_;
         while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
@@ -394,13 +395,14 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
 #if DEBUG
             Debug.Assert(--count < reserve_.Length);
 #endif
-            ref ObjectWrapper<T?> startReserve = ref Utils.GetArrayDataReference(reserve_);
-            ref ObjectWrapper<T?> currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
-            T? element = currentReserve.Value;
+            ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
+            ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
+            Debug.Assert(currentReserve.Value is T);
+            T element = Unsafe.As<T>(currentReserve.Value);
             Debug.Assert(element is not null);
 
-            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
+            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
             while (Unsafe.IsAddressLessThan(ref current, ref end) && Unsafe.IsAddressGreaterThan(ref currentReserve, ref startReserve))
             {
 #if DEBUG
@@ -420,7 +422,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
                 current = ref Unsafe.Add(ref current, 1);
             }
 
-            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
 #if DEBUG
             Debug.Assert(count_ == count);
 #endif
@@ -443,8 +445,8 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
         if (obj is null) return;
 
         SpinWait spinWait = new();
-        ObjectWrapper<T?>[] items = array;
-        ObjectWrapper<T?>[]? reserve_;
+        ObjectWrapper[] items = array;
+        ObjectWrapper[]? reserve_;
         while (true)
         {
             reserve_ = Interlocked.Exchange(ref reserve, null);
@@ -459,27 +461,29 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
         if (reserveCount + 1 + (items.Length / 2) > reserve_.Length)
             Array.Resize(ref reserve_, Math.Max(reserve_.Length * 2, 1));
 
-        ref ObjectWrapper<T?> startReserve = ref Utils.GetArrayDataReference(reserve_);
-        ref ObjectWrapper<T?> endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
+        ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
+        ref ObjectWrapper endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
 
 #if DEBUG
         Debug.Assert(count++ < reserve_.Length);
 #endif
         Debug.Assert(reserveCount < reserve_.Length);
-        ref ObjectWrapper<T?> currentReserve = ref Unsafe.Add(ref startReserve, reserveCount);
+        ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, reserveCount);
         currentReserve.Value = obj;
         currentReserve = ref Unsafe.Add(ref currentReserve, 1);
         if (!Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
         {
-            ref ObjectWrapper<T?> current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper<T?> end = ref Unsafe.Add(ref current, items.Length / 2);
+            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
 
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 // We don't use an optimistically not synchronized initial read in this part.
                 // This is because we expect the majority of the array to be filled.
                 // So it's not worth doing an initial read to check that.
-                T? element = Interlocked.Exchange(ref current.Value, null);
+                object? element_ = Interlocked.Exchange(ref current.Value, null);
+                Debug.Assert(element_ is null or T);
+                T? element = Unsafe.As<T?>(element_);
                 if (element is not null)
                 {
 #if DEBUG
@@ -494,32 +498,12 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
             }
         }
 
-        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
 #if DEBUG
         Debug.Assert(count_ == count);
 #endif
 
         reserveCount = count_;
         reserve = reserve_;
-    }
-
-    private sealed class GCCallback
-    {
-        private readonly GCHandle owner;
-
-        public GCCallback(DynamicObjectPool<T> owner) => this.owner = GCHandle.Alloc(owner, GCHandleType.Weak);
-
-        ~GCCallback()
-        {
-            object? owner = this.owner.Target;
-            if (owner is null)
-                this.owner.Free();
-            else
-            {
-                Debug.Assert(owner is DynamicObjectPool<T>);
-                Unsafe.As<DynamicObjectPool<T>>(owner).Trim();
-                GC.ReRegisterForFinalize(this);
-            }
-        }
     }
 }

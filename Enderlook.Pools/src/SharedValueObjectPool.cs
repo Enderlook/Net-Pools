@@ -21,30 +21,10 @@ internal sealed class SharedValueObjectPool<
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
     /// <summary>
-    /// Maximum length of <see cref="perCoreStacks"/> to use.
-    /// </summary>
-    private const int MaximumPerCoreStack = 64; // Selected to avoid needing to worry about processor groups.
-
-    /// <summary>
-    /// The maximum number of objects to store in each per-core stack.
-    /// </summary>
-    private const int MaxObjectsPerCore = 128;
-
-    /// <summary>
-    /// The initial capacity of <see cref="globalReserve"/>.
-    /// </summary>
-    private const int InitialGlobalReserveCapacity = 256;
-
-    /// <summary>
-    /// Number of locked stacks to employ.
-    /// </summary>
-    private static readonly int PerCoreStacksCount = Math.Min(Environment.ProcessorCount, MaximumPerCoreStack);
-
-    /// <summary>
     /// A per-thread element for better cache.
     /// </summary>
     [ThreadStatic]
-    private static ThreadLocalElement? threadLocalElement;
+    private static SharedThreadLocalElement<T?>? threadLocalElement;
 
     /// <summary>
     /// Used to keep tack of all thread local objects for trimming if needed.
@@ -60,7 +40,7 @@ internal sealed class SharedValueObjectPool<
     /// An array of per-core objects.<br/>
     /// The slots are lazily initialized.
     /// </summary>
-    private static readonly PerCoreStack[] perCoreStacks = new PerCoreStack[PerCoreStacksCount];
+    private static readonly SharedPerCoreStack<T>[] perCoreStacks = new SharedPerCoreStack<T>[Utils.PerCoreStacksCount];
 
     /// <summary>
     /// A global dynamic-size reserve of elements.<br/>
@@ -68,7 +48,7 @@ internal sealed class SharedValueObjectPool<
     /// When all <see cref="perCoreStacks"/> get empty, one of them is fulled with objects from this reserve.<br/>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.
     /// </summary>
-    private static T[]? globalReserve = new T[MaxObjectsPerCore];
+    private static T[]? globalReserve = new T[Utils.MaxObjectsPerCore];
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="globalReserve"/>.
@@ -83,16 +63,15 @@ internal sealed class SharedValueObjectPool<
     static SharedValueObjectPool()
     {
         for (int i = 0; i < perCoreStacks.Length; i++)
-            perCoreStacks[i] = new PerCoreStack(new T[MaxObjectsPerCore]);
-        GCCallback _ = new();
+            perCoreStacks[i] = new SharedPerCoreStack<T>(new T[Utils.MaxObjectsPerCore]);
     }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
-        PerCoreStack[] perCoreStacks_ = perCoreStacks;
-        ref PerCoreStack current = ref Utils.GetArrayDataReference(perCoreStacks_);
-        ref PerCoreStack end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
+        SharedPerCoreStack<T>[] perCoreStacks_ = perCoreStacks;
+        ref SharedPerCoreStack<T> current = ref Utils.GetArrayDataReference(perCoreStacks_);
+        ref SharedPerCoreStack<T> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
         int count = 0;
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
@@ -119,7 +98,7 @@ internal sealed class SharedValueObjectPool<
     public override T Rent()
     {
         // First, try to get an element from the thread local field if possible.
-        ThreadLocalElement? threadLocalElement_ = threadLocalElement;
+        SharedThreadLocalElement<T?>? threadLocalElement_ = threadLocalElement;
         if (threadLocalElement_ is not null)
         {
             T? element = threadLocalElement_.Value;
@@ -131,8 +110,8 @@ internal sealed class SharedValueObjectPool<
         }
 
         // Next, try to get an element from one of the per-core stacks.
-        PerCoreStack[] perCoreStacks_ = perCoreStacks;
-        ref PerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+        SharedPerCoreStack<T>[] perCoreStacks_ = perCoreStacks;
+        ref SharedPerCoreStack<T> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
         // Try to pop from the associated stack first.
         // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -140,7 +119,7 @@ internal sealed class SharedValueObjectPool<
 #else
         int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
 #endif
-        int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
+        int index = (int)((uint)currentProcessorId % (uint)Utils.PerCoreStacksCount);
         for (int i = 0; i < perCoreStacks_.Length; i++)
         {
             Debug.Assert(index < perCoreStacks_.Length);
@@ -167,9 +146,9 @@ internal sealed class SharedValueObjectPool<
 #else
             int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
 #endif
-            int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
+            int index = (int)((uint)currentProcessorId % (uint)Utils.PerCoreStacksCount);
 
-            if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out T element))
+            if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out T element, ref globalReserve, ref globalReserveCount))
                 return element;
             // Finally, instantiate a new object.
             return ObjectPoolHelper<T>.Create();
@@ -190,15 +169,15 @@ internal sealed class SharedValueObjectPool<
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
-        ThreadLocalElement threadLocalElement_ = threadLocalElement ?? InitializeThreadLocalElement();
+        SharedThreadLocalElement<T?> threadLocalElement_ = threadLocalElement ?? InitializeThreadLocalElement();
         T? previous = threadLocalElement_.Value;
         threadLocalElement_.Value = element;
         threadLocalElement_.MillisecondsTimeStamp = 0;
         if (previous is T previous_)
         {
             // Try to store the object from one of the per-core stacks.
-            PerCoreStack[] perCoreStacks_ = perCoreStacks;
-            ref PerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+            SharedPerCoreStack<T>[] perCoreStacks_ = perCoreStacks;
+            ref SharedPerCoreStack<T> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
             // Try to push from the associated stack first.
             // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -206,7 +185,7 @@ internal sealed class SharedValueObjectPool<
 #else
             int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
 #endif
-            int index = (int)((uint)currentProcessorId % (uint)PerCoreStacksCount);
+            int index = (int)((uint)currentProcessorId % (uint)Utils.PerCoreStacksCount);
             for (int i = 0; i < perCoreStacks_.Length; i++)
             {
                 Debug.Assert(index < perCoreStacks_.Length);
@@ -219,7 +198,7 @@ internal sealed class SharedValueObjectPool<
 
             // Next, transfer a per-core stack to the global reserve.
             Debug.Assert(index < perCoreStacks_.Length);
-            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous_);
+            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous_, ref globalReserve, ref globalReserveCount);
         }
     }
 
@@ -235,7 +214,7 @@ internal sealed class SharedValueObjectPool<
         const int PerCoreHighTrimAfterMilliseconds = 10 * 1000; // Trim after 10 seconds for high pressure.
         const int PerCoreLowTrimCount = 1; // Trim 1 item when pressure is low.
         const int PerCoreMediumTrimCount = 2; // Trim 2 items when pressure is moderate.
-        const int PerCoreHighTrimCount = MaxObjectsPerCore; // Trim all items when pressure is high.
+        const int PerCoreHighTrimCount = Utils.MaxObjectsPerCore; // Trim all items when pressure is high.
 
         const int ThreadLocalLowMilliseconds = 30 * 1000; // Trim after 30 seconds for moderate pressure.
         const int ThreadLocalMediumMilliseconds = 15 * 1000; // Trim after 15 seconds for low pressure.
@@ -295,9 +274,9 @@ internal sealed class SharedValueObjectPool<
         }
 
         {
-            PerCoreStack[] perCoreStacks_ = perCoreStacks;
-            ref PerCoreStack current = ref Utils.GetArrayDataReference(perCoreStacks_);
-            ref PerCoreStack end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
+            SharedPerCoreStack<T>[] perCoreStacks_ = perCoreStacks;
+            ref SharedPerCoreStack<T> current = ref Utils.GetArrayDataReference(perCoreStacks_);
+            ref SharedPerCoreStack<T> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
             // Trim each of the per-core stacks.
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
@@ -346,8 +325,8 @@ internal sealed class SharedValueObjectPool<
                         current = ref Unsafe.Add(ref current, 1);
                         continue;
                     }
-                    Debug.Assert(target is ThreadLocalElement);
-                    Unsafe.As<ThreadLocalElement>(target).Clear();
+                    Debug.Assert(target is SharedThreadLocalElement<T?>);
+                    Unsafe.As<SharedThreadLocalElement<T?>>(target).Clear();
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
@@ -373,8 +352,8 @@ internal sealed class SharedValueObjectPool<
                         current = ref Unsafe.Add(ref current, 1);
                         continue;
                     }
-                    Debug.Assert(target is ThreadLocalElement);
-                    Unsafe.As<ThreadLocalElement>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
+                    Debug.Assert(target is SharedThreadLocalElement<T?>);
+                    Unsafe.As<SharedThreadLocalElement<T?>>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
@@ -413,7 +392,7 @@ internal sealed class SharedValueObjectPool<
             {
                 Debug.Assert(globalTrimMilliseconds == 0);
                 globalCount = 0;
-                if (globalReserve_.Length <= MaxObjectsPerCore)
+                if (globalReserve_.Length <= Utils.MaxObjectsPerCore)
                 {
 #if NET6_0_OR_GREATER
                     Array.Clear(globalReserve_);
@@ -422,7 +401,7 @@ internal sealed class SharedValueObjectPool<
 #endif
                 }
                 else
-                    globalReserve_ = new T[InitialGlobalReserveCapacity];
+                    globalReserve_ = new T[Utils.InitialGlobalReserveCapacity];
                 globalReserveMillisecondsTimeStamp = 0;
             }
             else
@@ -445,7 +424,7 @@ internal sealed class SharedValueObjectPool<
                     // Since the global reserve has a dynamic size, we shrink the reserve if it gets too small.
                     if (globalLength / newGlobalCount >= 4)
                     {
-                        if (globalLength <= InitialGlobalReserveCapacity)
+                        if (globalLength <= Utils.InitialGlobalReserveCapacity)
                             goto simpleClean;
                         else
                         {
@@ -468,9 +447,9 @@ internal sealed class SharedValueObjectPool<
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ThreadLocalElement InitializeThreadLocalElement()
+    private static SharedThreadLocalElement<T?> InitializeThreadLocalElement()
     {
-        ThreadLocalElement slot = new();
+        SharedThreadLocalElement<T?> slot = new();
         threadLocalElement = slot;
 
         SpinWait spinWait = new();
@@ -512,301 +491,5 @@ internal sealed class SharedValueObjectPool<
     end:
         allThreadLocalElements = allThreadLocalElements_;
         return slot;
-    }
-
-    private sealed class ThreadLocalElement
-    {
-        public T? Value;
-        public int MillisecondsTimeStamp;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T? ReplaceWith(T value)
-        {
-            T? previous = Value;
-            Value = value;
-            MillisecondsTimeStamp = 0;
-            return previous;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public void Clear()
-        {
-            Value = null;
-            MillisecondsTimeStamp = 0;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public void Trim(int currentMilliseconds, uint millisecondsThreshold)
-        {
-            // We treat 0 to mean it hasn't yet been seen in a Trim call.
-            // In the very rare case where Trim records 0, it'll take an extra Trim call to remove the object.
-            int lastSeen = MillisecondsTimeStamp;
-            if (lastSeen == 0)
-                MillisecondsTimeStamp = currentMilliseconds;
-            else if ((currentMilliseconds - lastSeen) >= millisecondsThreshold)
-            {
-                // Time noticeably wrapped, or we've surpassed the threshold.
-                // Clear out the array.
-                Value = null;
-            }
-        }
-    }
-
-    private struct PerCoreStack
-    {
-        private readonly T[] array;
-        private int count;
-        private int millisecondsTimeStamp;
-
-        public PerCoreStack(T[] array)
-        {
-            this.array = array;
-            count = 0;
-            millisecondsTimeStamp = 0;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetCount()
-        {
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Volatile.Read(ref count);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            }
-            return count_;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryPush(T element)
-        {
-            T[] items = array;
-
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Interlocked.Exchange(ref count, -1);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            };
-
-            bool enqueued = false;
-            if (unchecked((uint)count_ < (uint)items.Length))
-            {
-                if (count_ == 0)
-                {
-                    // Reset the time stamp now that we're transitioning from empty to non-empty.
-                    // Trim will see this as 0 and initialize it to the current time when Trim is called.
-                    millisecondsTimeStamp = 0;
-                }
-
-                Debug.Assert(count_ < items.Length);
-                Unsafe.Add(ref Utils.GetArrayDataReference(items), count_++) = element;
-                enqueued = true;
-            }
-
-            count = count_;
-            return enqueued;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryPop(out T element)
-        {
-            T[] items = array;
-
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Interlocked.Exchange(ref count, -1);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            };
-
-            int newCount = count_ - 1;
-            if (unchecked((uint)newCount < (uint)items.Length))
-            {
-                Debug.Assert(newCount < items.Length);
-                ref T slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
-                element = slot;
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-#endif
-                    slot = default;
-                count = newCount;
-                return true;
-            }
-
-            count = count_;
-#if NET5_0_OR_GREATER
-            Unsafe.SkipInit(out element);
-#else
-            element = default;
-#endif
-            return false;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool FillFromGlobalReserve(out T element)
-        {
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Interlocked.Exchange(ref count, -1);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            }
-
-            T[]? globalReserve_;
-            while (true)
-            {
-                globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-                if (globalReserve_ is not null)
-                    break;
-                spinWait.SpinOnce();
-            }
-
-            int globalCount = globalReserveCount;
-            bool found;
-            if (globalCount > 0)
-            {
-                Debug.Assert(globalCount - 1 < globalReserve_.Length);
-                element = Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), --globalCount);
-                found = true;
-
-                T[] items = array;
-
-                int length = Math.Min(MaxObjectsPerCore - count_, globalCount);
-                int start = globalCount - length;
-                Array.Copy(globalReserve_, start, items, count_, length);
-                Array.Clear(globalReserve_, start, length);
-
-                globalCount = start;
-                count_ += length;
-
-                globalReserveCount = globalCount;
-            }
-            else
-            {
-                found = false;
-#if NET5_0_OR_GREATER
-                Unsafe.SkipInit(out element);
-#else
-                element = default;
-#endif
-            }
-
-            globalReserve = globalReserve_;
-            count = count_;
-            return found;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void MoveToGlobalReserve(T obj)
-        {
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Interlocked.Exchange(ref count, -1);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            }
-
-            T[]? globalReserve_;
-            while (true)
-            {
-                globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-                if (globalReserve_ is not null)
-                    break;
-                spinWait.SpinOnce();
-            }
-
-            T[] items = array;
-            int amount = count_ + 1;
-            int globalCount = globalReserveCount;
-            int newGlobalCount = globalCount + amount;
-            if (unchecked((uint)newGlobalCount >= (uint)globalReserve_.Length))
-                Array.Resize(ref globalReserve_, globalReserve_.Length * 2);
-            Array.Copy(items, 0, globalReserve_, globalCount, count_);
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-#endif
-#if NET6_0_OR_GREATER
-                Array.Clear(items);
-#else
-                Array.Clear(items, 0, items.Length);
-#endif
-            globalCount += count_;
-            count_ = 0;
-            Debug.Assert(globalCount < globalReserve_.Length);
-            Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), globalCount++) = obj;
-
-            globalReserveCount = globalCount;
-            globalReserve = globalReserve_;
-            count = count_;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void TryTrim(int currentMilliseconds, int trimMilliseconds, int trimCount)
-        {
-            if (count == 0)
-                return;
-
-            T[] items = array;
-
-            SpinWait spinWait = new();
-            int count_;
-            while (true)
-            {
-                count_ = Interlocked.Exchange(ref count, -1);
-                if (count_ != -1)
-                    break;
-                spinWait.SpinOnce();
-            };
-
-            if (count_ == 0)
-                goto end;
-
-            int millisecondsTimeStamp = this.millisecondsTimeStamp;
-            if (millisecondsTimeStamp == 0)
-                millisecondsTimeStamp = currentMilliseconds;
-
-            if ((currentMilliseconds - millisecondsTimeStamp) <= trimMilliseconds)
-                goto endAndAssign;
-
-            // We've elapsed enough time since the first item went into the stack.
-            // Drop the top item so it can be collected and make the stack look a little newer.
-
-            Array.Clear(items, 0, Math.Min(count_, trimCount));
-            count_ = Math.Max(count_ - trimCount, 0);
-
-            millisecondsTimeStamp = count_ > 0 ?
-                millisecondsTimeStamp + (trimMilliseconds / 4) // Give the remaining items a bit more time.
-                : 0;
-
-        endAndAssign:
-            this.millisecondsTimeStamp = millisecondsTimeStamp;
-        end:
-            count = count_;
-        }
-    }
-
-    private sealed class GCCallback
-    {
-        ~GCCallback()
-        {
-            SharedValueObjectPool<T>.Trim_();
-            GC.ReRegisterForFinalize(this);
-        }
     }
 }

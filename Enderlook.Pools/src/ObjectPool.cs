@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools;
 
@@ -9,14 +8,6 @@ namespace Enderlook.Pools;
 /// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ObjectPool<T>
 {
-    private static class Container
-    {
-        public static readonly ObjectPool<T> Shared = (ObjectPool<T>)Activator.CreateInstance((typeof(T).IsValueType ?
-            typeof(SharedValueObjectPool<>)
-            : typeof(SharedObjectPool<>))
-            .MakeGenericType(typeof(T)))!;
-    }
-
     /// <summary>
     /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.<br/>
     /// The shared pool has the following features:
@@ -30,7 +21,7 @@ public abstract class ObjectPool<T>
     public static ObjectPool<T> Shared
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Container.Shared;
+        get => SharedObjectPoolContainer<T>.Shared;
     }
 
     /// <summary>

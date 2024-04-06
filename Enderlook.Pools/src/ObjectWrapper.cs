@@ -1,11 +1,18 @@
 ﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools;
 
 #if DEBUG
 [DebuggerDisplay("{Value}")]
 #endif
-internal struct ObjectWrapper<T> // Prevent runtime covariant checks on array access.
+internal struct ObjectWrapper // Prevent runtime covariant checks on array access.
 {
-    public T Value;
+    public object? Value;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ObjectWrapper(object? value)
+    {
+        Value = value;
+    }
 }

@@ -75,7 +75,7 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
         array = new ValueObjectWrapper<T>[hotCapacity - 1]; // -1 due to firstElement.
         reserve = new T[initialColdCapacity];
 
-        GCCallback _ = new(this);
+        GCCallback<T> _ = new(this);
     }
 
     /// <summary>
@@ -415,7 +415,7 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
                 current = ref Unsafe.Add(ref current, 1);
             }
 
-            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
 #if DEBUG
             Debug.Assert(count_ == count);
 #endif
@@ -486,32 +486,12 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
             }
         }
 
-        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper<T?>>();
+        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
 #if DEBUG
         Debug.Assert(count_ == count);
 #endif
 
         reserveCount = count_;
         reserve = reserve_;
-    }
-
-    private sealed class GCCallback
-    {
-        private readonly GCHandle owner;
-
-        public GCCallback(DynamicValueObjectPool<T> owner) => this.owner = GCHandle.Alloc(owner, GCHandleType.Weak);
-
-        ~GCCallback()
-        {
-            object? owner = this.owner.Target;
-            if (owner is null)
-                this.owner.Free();
-            else
-            {
-                Debug.Assert(owner is DynamicValueObjectPool<T>);
-                Unsafe.As<DynamicValueObjectPool<T>>(owner).Trim();
-                GC.ReRegisterForFinalize(this);
-            }
-        }
     }
 }
