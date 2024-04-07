@@ -266,12 +266,13 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
                         if (--arrayTrimCount == 0)
                         {
                             arrayMillisecondsTimeStamp += arrayMillisecondsTimeStamp / 4; // Give the remaining items a bit more time.
-                            break;
+                            goto end;
                         }
                     }
                     current = ref Unsafe.Add(ref current, 1);
                 }
                 arrayMillisecondsTimeStamp = 0;
+            end:;
             }
             else
             {
@@ -399,7 +400,6 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
                 Debug.Assert(count > 0);
 #endif
                 // Note that intitial read and write are optimistically not synchronized. This is intentional.
-                // We will lock only when we have a candidate.
                 // In a worst case we may miss some recently returned objects or accidentally free objects.
                 if (!current.NotSynchronizedHasValue)
                 {

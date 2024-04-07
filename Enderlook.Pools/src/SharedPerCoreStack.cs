@@ -234,10 +234,13 @@ internal struct SharedPerCoreStack<T>
 
         int millisecondsTimeStamp = this.millisecondsTimeStamp;
         if (millisecondsTimeStamp == 0)
+        {
             millisecondsTimeStamp = currentMilliseconds;
+            goto endAndAssign;
+        }
 
         if ((currentMilliseconds - millisecondsTimeStamp) <= trimMilliseconds)
-            goto endAndAssign;
+            goto end;
 
         // We've elapsed enough time since the first item went into the stack.
         // Drop the top item so it can be collected and make the stack look a little newer.
