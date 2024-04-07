@@ -15,7 +15,7 @@ internal sealed class SharedObjectPool<
 #if NET5_0_OR_GREATER
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 #endif
-    T> : ObjectPool<T> where T : class
+T> : ObjectPool<T> where T : class
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 

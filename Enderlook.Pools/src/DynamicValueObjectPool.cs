@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Enderlook.Pools;
@@ -354,9 +353,9 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
                         reserve_ = array;
                         goto next2;
                     }
-                    simpleClean:
+                simpleClean:
                     Array.Clear(reserve_, newReserveCount, toRemove);
-                    next2:;
+                next2:;
 
                     reserveCount = reserveCount_;
                     reserve = reserve_;

@@ -16,7 +16,7 @@ internal sealed class SharedValueObjectPool<
 #if NET5_0_OR_GREATER
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 #endif
-    T> : ObjectPool<T> where T : struct
+T> : ObjectPool<T> where T : struct
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
