@@ -123,7 +123,7 @@ T> : ObjectPool<T> where T : class
         for (int i = 0; i < perCoreStacks_.Length; i++)
         {
             Debug.Assert(index < perCoreStacks_.Length);
-            // TODO: This Unsafe.Add could be improved to avoid the under the hood mulitplication (`base + offset * size` and just do `base + offset`).
+            // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
             if (Unsafe.Add(ref perCoreStacks_Root, index).TryPop(out ObjectWrapper element))
             {
                 Debug.Assert(element.Value is T);
