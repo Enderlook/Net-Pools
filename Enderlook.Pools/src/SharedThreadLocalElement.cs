@@ -7,15 +7,6 @@ internal sealed class SharedThreadLocalElement<T>
     public T? Value;
     public int MillisecondsTimeStamp;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T? ReplaceWith(T value)
-    {
-        T? previous = Value;
-        Value = value;
-        MillisecondsTimeStamp = 0;
-        return previous;
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Clear()
     {
