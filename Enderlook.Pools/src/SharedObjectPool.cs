@@ -10,12 +10,14 @@ namespace Enderlook.Pools;
 /// <summary>
 /// A fast and thread-safe object pool to store a large amount of objects.
 /// </summary>
-/// <typeparam name="T">Type of object to pool.</typeparam>
+/// <typeparam name="TElement">Type of object to pool.</typeparam>
+/// <typeparam name="TLocal">Type for thread-local elements.</typeparam>
+/// <typeparam name="TStorage">Type for multithreading elements.</typeparam>
 internal sealed class SharedObjectPool<
 #if NET5_0_OR_GREATER
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 #endif
-T> : ObjectPool<T> where T : class
+TElement, TLocal, TStorage> : ObjectPool<TElement>
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
@@ -23,7 +25,7 @@ T> : ObjectPool<T> where T : class
     /// A per-thread element for better cache.
     /// </summary>
     [ThreadStatic]
-    private static SharedThreadLocalElement<object>? threadLocalElement;
+    private static TLocal? threadLocalElement;
 
     /// <summary>
     /// Used to keep tack of all thread local objects for trimming if needed.
@@ -39,7 +41,7 @@ T> : ObjectPool<T> where T : class
     /// An array of per-core objects.<br/>
     /// The slots are lazily initialized.
     /// </summary>
-    private static readonly SharedPerCoreStack<ObjectWrapper>[] perCoreStacks = new SharedPerCoreStack<ObjectWrapper>[Utils.PerCoreStacksCount];
+    private static readonly SharedPerCoreStack<TStorage>[] perCoreStacks = new SharedPerCoreStack<TStorage>[Utils.PerCoreStacksCount];
 
     /// <summary>
     /// A global dynamic-size reserve of elements.<br/>
@@ -47,7 +49,7 @@ T> : ObjectPool<T> where T : class
     /// When all <see cref="perCoreStacks"/> get empty, one of them is fulled with objects from this reserve.<br/>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.
     /// </summary>
-    private static ObjectWrapper[]? globalReserve = new ObjectWrapper[Utils.MaxObjectsPerCore];
+    private static TStorage[]? globalReserve = new TStorage[Utils.MaxObjectsPerCore];
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="globalReserve"/>.
@@ -62,15 +64,37 @@ T> : ObjectPool<T> where T : class
     static SharedObjectPool()
     {
         for (int i = 0; i < perCoreStacks.Length; i++)
-            perCoreStacks[i] = new SharedPerCoreStack<ObjectWrapper>(new ObjectWrapper[Utils.MaxObjectsPerCore]);
+            perCoreStacks[i] = new SharedPerCoreStack<TStorage>(new TStorage[Utils.MaxObjectsPerCore]);
+
+#if DEBUG
+        if (typeof(TElement).IsValueType)
+        {
+            Debug.Assert(typeof(TElement) == typeof(TStorage));
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<TElement>())
+#endif
+                // Required so during trim we can atomically remove elements.
+                // Internally the object stored is of type `NullableS<TElement>`.
+                Debug.Assert(typeof(TLocal) == typeof(SharedThreadLocalElement));
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            else
+                Debug.Assert(typeof(TLocal) == typeof(NullableS<TElement>));
+#endif
+        }
+        else
+        {
+            Debug.Assert(typeof(TStorage) == typeof(ObjectWrapper));
+            Debug.Assert(typeof(TLocal) == typeof(SharedThreadLocalElement));
+        }
+#endif
     }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
-        SharedPerCoreStack<ObjectWrapper>[] perCoreStacks_ = perCoreStacks;
-        ref SharedPerCoreStack<ObjectWrapper> current = ref Utils.GetArrayDataReference(perCoreStacks_);
-        ref SharedPerCoreStack<ObjectWrapper> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
+        SharedPerCoreStack<TStorage>[] perCoreStacks_ = perCoreStacks;
+        ref SharedPerCoreStack<TStorage> current = ref Utils.GetArrayDataReference(perCoreStacks_);
+        ref SharedPerCoreStack<TStorage> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
         int count = 0;
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
@@ -79,7 +103,7 @@ T> : ObjectPool<T> where T : class
         }
 
         SpinWait spinWait = new();
-        ObjectWrapper[]? globalReserve_;
+        TStorage[]? globalReserve_;
         while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -90,28 +114,111 @@ T> : ObjectPool<T> where T : class
         count += globalReserveCount;
         globalReserve = globalReserve_;
 
+        spinWait = new();
+        GCHandle[]? allThreadLocalElements_;
+        while (true)
+        {
+            allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
+            if (allThreadLocalElements_ is not null)
+                break;
+            spinWait.SpinOnce();
+        }
+
+        ref GCHandle current2 = ref Utils.GetArrayDataReference(allThreadLocalElements_);
+        ref GCHandle end2 = ref Unsafe.Add(ref current2, allThreadLocalElementsCount);
+        while (Unsafe.IsAddressLessThan(ref current2, ref end2))
+        {
+            SharedThreadLocalElement? sharedThreadLocalElement = Unsafe.As<SharedThreadLocalElement?>(current2.Target);
+            if (sharedThreadLocalElement is not null)
+            {
+                object? value = sharedThreadLocalElement.Value;
+                if (typeof(TElement).IsValueType)
+                {
+                    Debug.Assert(value is null or NullableC<TElement>);
+                    if (value is not null && Unsafe.As<NullableC<TElement>>(value).Has)
+                        count++;
+                }
+                else
+                {
+                    Debug.Assert(value is null or TElement);
+                    if (value is not null)
+                        count++;
+                }
+            }
+            current2 = Unsafe.Add(ref current2, 1);
+        }
+
+        allThreadLocalElements = allThreadLocalElements_;
+
         return count;
     }
 
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
-    public override T Rent()
+    public override TElement Rent()
     {
         // First, try to get an element from the thread local field if possible.
-        SharedThreadLocalElement<object>? threadLocalElement_ = threadLocalElement;
-        if (threadLocalElement_ is not null)
+        if (typeof(TElement).IsValueType)
         {
-            object? element = threadLocalElement_.Value;
-            if (element is not null)
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<TLocal>())
+#endif
             {
-                threadLocalElement_.Value = null;
-                Debug.Assert(element is T);
-                return Unsafe.As<T>(element);
+                TLocal? threadLocalElement_ = threadLocalElement;
+                if (threadLocalElement_ is not null)
+                {
+                    SharedThreadLocalElement threadLocalElement_2 = Unsafe.As<TLocal, SharedThreadLocalElement>(ref threadLocalElement_);
+                    object? element = threadLocalElement_2.Value;
+                    if (element is not null)
+                    {
+                        Debug.Assert(element is null or NullableC<TElement>);
+                        threadLocalElement_2.Value = default;
+                        NullableC<TElement>? element_ = Unsafe.As<NullableC<TElement>?>(element);
+                        Debug.Assert(element_ is not null);
+                        if (element_.Has)
+                        {
+                            element_.Has = false;
+                            TElement? result = element_.Value;
+                            Debug.Assert(result is not null);
+                            element_.Value = default;
+                            return result;
+                        }
+                    }
+                }
+            }
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            else
+            {
+                ref NullableS<TElement> threadLocalElement_ = ref Unsafe.As<TLocal?, NullableS<TElement>>(ref threadLocalElement);
+                if (threadLocalElement_.Has)
+                {
+                    threadLocalElement_.Has = false;
+                    TElement? result = threadLocalElement_.Value;
+                    Debug.Assert(result is not null);
+                    threadLocalElement_.Value = default;
+                    return result;
+                }
+            }
+#endif
+        }
+        else
+        {
+            TLocal? threadLocalElement_ = threadLocalElement;
+            if (threadLocalElement_ is not null)
+            {
+                SharedThreadLocalElement threadLocalElement_2 = Unsafe.As<TLocal, SharedThreadLocalElement>(ref threadLocalElement_);
+                object? element = threadLocalElement_2.Value;
+                if (element is not null)
+                {
+                    Debug.Assert(element is null or TElement);
+                    threadLocalElement_2.Value = default;
+                    return Unsafe.As<object?, TElement>(ref element);
+                }
             }
         }
 
         // Next, try to get an element from one of the per-core stacks.
-        SharedPerCoreStack<ObjectWrapper>[] perCoreStacks_ = perCoreStacks;
-        ref SharedPerCoreStack<ObjectWrapper> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+        SharedPerCoreStack<TStorage>[] perCoreStacks_ = perCoreStacks;
+        ref SharedPerCoreStack<TStorage> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
         // Try to pop from the associated stack first.
         // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -124,10 +231,16 @@ T> : ObjectPool<T> where T : class
         {
             Debug.Assert(index < perCoreStacks_.Length);
             // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
-            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPop(out ObjectWrapper element))
+            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPop(out TStorage element))
             {
-                Debug.Assert(element.Value is T);
-                return Unsafe.As<T>(element.Value);
+                if (typeof(TElement).IsValueType)
+                    return Unsafe.As<TStorage, TElement>(ref element);
+                else
+                {
+                    TElement? element_ = Unsafe.As<object?, TElement?>(ref Unsafe.As<TStorage, ObjectWrapper>(ref element).Value);
+                    Debug.Assert(element_ is not null);
+                    return element_;
+                }
             }
 
             if (++index == perCoreStacks_.Length)
@@ -139,10 +252,10 @@ T> : ObjectPool<T> where T : class
             return FillFromGlobalReserve();
 
         // Finally, instantiate a new object.
-        return ObjectPoolHelper<T>.Create();
+        return ObjectPoolHelper<TElement>.Create();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static T FillFromGlobalReserve()
+        static TElement FillFromGlobalReserve()
         {
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
             int currentProcessorId = Thread.GetCurrentProcessorId();
@@ -151,13 +264,19 @@ T> : ObjectPool<T> where T : class
 #endif
             int index = (int)((uint)currentProcessorId % (uint)Utils.PerCoreStacksCount);
 
-            if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out ObjectWrapper element, ref globalReserve!, ref globalReserveCount))
+            if (Unsafe.Add(ref Utils.GetArrayDataReference(perCoreStacks), index).FillFromGlobalReserve(out TStorage? element, ref globalReserve!, ref globalReserveCount))
             {
-                Debug.Assert(element.Value is T);
-                return Unsafe.As<T>(element.Value);
+                if (typeof(TElement).IsValueType)
+                    return Unsafe.As<TStorage?, TElement>(ref element);
+                else
+                {
+                    TElement? element_ = Unsafe.As<object?, TElement?>(ref Unsafe.As<TStorage?, ObjectWrapper>(ref element).Value);
+                    Debug.Assert(element_ is not null);
+                    return element_;
+                }
             }
             // Finally, instantiate a new object.
-            return ObjectPoolHelper<T>.Create();
+            return ObjectPoolHelper<TElement>.Create();
         }
     }
 
@@ -166,7 +285,7 @@ T> : ObjectPool<T> where T : class
     /// If the pool is full, the object will be discarded.
     /// </summary>
     /// <param name="element">Object to return.</param>
-    public override void Return(T element)
+    public override void Return(TElement element)
     {
         if (element is null) Utils.ThrowArgumentNullException_Element();
         Debug.Assert(element is not null);
@@ -174,15 +293,98 @@ T> : ObjectPool<T> where T : class
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
-        SharedThreadLocalElement<object> threadLocalElement_ = threadLocalElement ?? InitializeThreadLocalElement();
-        object? previous = threadLocalElement_.Value;
-        threadLocalElement_.Value = element;
-        threadLocalElement_.MillisecondsTimeStamp = 0;
-        if (previous is not null)
+        TElement? previous;
+        bool hasPrevious;
+        if (typeof(TElement).IsValueType)
+        {
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<TElement>())
+#endif
+            {
+                TLocal? local = threadLocalElement ?? InitializeThreadLocalElement();
+                SharedThreadLocalElement? threadLocalElement_ = Unsafe.As<TLocal?, SharedThreadLocalElement?>(ref local);
+                Debug.Assert(threadLocalElement_ is not null);
+                NullableC<TElement>? slot = Unsafe.As<NullableC<TElement>?>(threadLocalElement_.Value);
+                threadLocalElement_.MillisecondsTimeStamp = 0;
+                if (slot is null)
+                {
+                    slot = new()
+                    {
+                        Has = true,
+                        Value = element
+                    };
+                    threadLocalElement_.Value = slot;
+                }
+                else if (slot.Has)
+                {
+                    previous = slot.Value;
+                    slot.Value = element;
+                    hasPrevious = true;
+                    goto check;
+                }
+                slot.Has = true;
+                slot.Value = element;
+                hasPrevious = false;
+#if NET5_0_OR_GREATER
+                Unsafe.SkipInit(out previous);
+#else
+                previous = default;
+#endif
+            }
+#if NET5_0_OR_GREATER
+            else
+            {
+                ref NullableS<TElement> slot = ref Unsafe.As<TLocal?, NullableS<TElement>>(ref threadLocalElement);
+                if (slot.Has)
+                {
+                    previous = slot.Value;
+                    slot.Value = element;
+                    hasPrevious = true;
+                }
+                else
+                {
+                    slot.Has = true;
+                    slot.Value = element;
+                    hasPrevious = false;
+#if NET5_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                    Unsafe.SkipInit(out previous);
+#else
+                    previous = default;
+#endif
+                }
+            }
+#elif NETSTANDARD2_1_OR_GREATER
+            else
+            {
+                previous = default;
+                hasPrevious = default;
+            }
+#endif
+        }
+        else
+        {
+            TLocal? local = threadLocalElement ?? InitializeThreadLocalElement();
+            SharedThreadLocalElement? threadLocalElement_ = Unsafe.As<TLocal?, SharedThreadLocalElement?>(ref local);
+            Debug.Assert(threadLocalElement_ is not null);
+            TElement? slot = Unsafe.As<object?, TElement>(ref threadLocalElement_.Value);
+            previous = slot;
+            slot = element;
+            threadLocalElement_.MillisecondsTimeStamp = 0;
+#if NET5_0_OR_GREATER
+            Unsafe.SkipInit(out previous);
+            Unsafe.SkipInit(out hasPrevious);
+#else
+            previous = default;
+            hasPrevious = default;
+#endif
+        }
+
+    check:
+        if (typeof(TElement).IsValueType ? hasPrevious : previous is not null)
         {
             // Try to store the object from one of the per-core stacks.
-            SharedPerCoreStack<ObjectWrapper>[] perCoreStacks_ = perCoreStacks;
-            ref SharedPerCoreStack<ObjectWrapper> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+            SharedPerCoreStack<TStorage>[] perCoreStacks_ = perCoreStacks;
+            ref SharedPerCoreStack<TStorage> perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
             // Try to push from the associated stack first.
             // If that fails, try with other stacks.
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
@@ -191,12 +393,10 @@ T> : ObjectPool<T> where T : class
             int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
 #endif
             int index = (int)((uint)currentProcessorId % (uint)Utils.PerCoreStacksCount);
-            Debug.Assert(previous is T);
-            ObjectWrapper previous_ = new(Unsafe.As<T>(previous));
             for (int i = 0; i < perCoreStacks_.Length; i++)
             {
                 Debug.Assert(index < perCoreStacks_.Length);
-                if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(previous_))
+                if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(Unsafe.As<TElement?, TStorage>(ref previous)))
                     return;
 
                 if (++index == perCoreStacks_.Length)
@@ -205,7 +405,7 @@ T> : ObjectPool<T> where T : class
 
             // Next, transfer a per-core stack to the global reserve.
             Debug.Assert(index < perCoreStacks_.Length);
-            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(previous_, ref globalReserve!, ref globalReserveCount);
+            Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(Unsafe.As<TElement?, TStorage>(ref previous), ref globalReserve!, ref globalReserveCount);
         }
     }
 
@@ -281,9 +481,9 @@ T> : ObjectPool<T> where T : class
         }
 
         {
-            SharedPerCoreStack<ObjectWrapper>[] perCoreStacks_ = perCoreStacks;
-            ref SharedPerCoreStack<ObjectWrapper> current = ref Utils.GetArrayDataReference(perCoreStacks_);
-            ref SharedPerCoreStack<ObjectWrapper> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
+            SharedPerCoreStack<TStorage>[] perCoreStacks_ = perCoreStacks;
+            ref SharedPerCoreStack<TStorage> current = ref Utils.GetArrayDataReference(perCoreStacks_);
+            ref SharedPerCoreStack<TStorage> end = ref Unsafe.Add(ref current, perCoreStacks_.Length);
             // Trim each of the per-core stacks.
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
@@ -332,8 +532,8 @@ T> : ObjectPool<T> where T : class
                         current = ref Unsafe.Add(ref current, 1);
                         continue;
                     }
-                    Debug.Assert(target is SharedThreadLocalElement<object>);
-                    Unsafe.As<SharedThreadLocalElement<object>>(target).Clear();
+                    Debug.Assert(target is SharedThreadLocalElement);
+                    Unsafe.As<SharedThreadLocalElement>(target).Clear();
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
@@ -359,8 +559,8 @@ T> : ObjectPool<T> where T : class
                         current = ref Unsafe.Add(ref current, 1);
                         continue;
                     }
-                    Debug.Assert(target is SharedThreadLocalElement<object>);
-                    Unsafe.As<SharedThreadLocalElement<object>>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
+                    Debug.Assert(target is SharedThreadLocalElement);
+                    Unsafe.As<SharedThreadLocalElement>(target).Trim(currentMilliseconds, threadLocalTrimMilliseconds);
                     Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
                     newCurrent = handle;
 #if DEBUG
@@ -380,7 +580,7 @@ T> : ObjectPool<T> where T : class
         }
 
         spinWait = new();
-        ObjectWrapper[]? globalReserve_;
+        TStorage[]? globalReserve_;
         while (true)
         {
             globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
@@ -408,7 +608,7 @@ T> : ObjectPool<T> where T : class
 #endif
                 }
                 else
-                    globalReserve_ = new ObjectWrapper[Utils.InitialGlobalReserveCapacity];
+                    globalReserve_ = new TStorage[Utils.InitialGlobalReserveCapacity];
                 globalReserveMillisecondsTimeStamp = 0;
             }
             else
@@ -436,7 +636,7 @@ T> : ObjectPool<T> where T : class
                         else
                         {
                             int newLength = globalLength / 2;
-                            ObjectWrapper[] array = new ObjectWrapper[newLength];
+                            TStorage[] array = new TStorage[newLength];
                             Array.Copy(globalReserve_, array, newGlobalCount);
                             globalReserve_ = array;
                             goto next;
@@ -454,10 +654,11 @@ T> : ObjectPool<T> where T : class
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static SharedThreadLocalElement<object> InitializeThreadLocalElement()
+    private static TLocal InitializeThreadLocalElement()
     {
-        SharedThreadLocalElement<object> slot = new();
-        threadLocalElement = slot;
+        SharedThreadLocalElement slot = new();
+        TLocal? local = Unsafe.As<SharedThreadLocalElement, TLocal>(ref slot);
+        SharedObjectPool<TElement, TLocal, TStorage>.threadLocalElement = local;
 
         SpinWait spinWait = new();
         GCHandle[]? allThreadLocalElements_;
@@ -497,6 +698,6 @@ T> : ObjectPool<T> where T : class
 
     end:
         allThreadLocalElements = allThreadLocalElements_;
-        return slot;
+        return local;
     }
 }
