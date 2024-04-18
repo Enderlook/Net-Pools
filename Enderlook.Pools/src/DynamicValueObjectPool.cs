@@ -56,23 +56,24 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
     /// <summary>
     /// Creates a pool of objects.
     /// </summary>
-    /// <param name="hotCapacity">Hot capacity of the pool.<br/>
-    /// If this capacity is fulled, the pool will expand a cold region.<br/>
-    /// The hot capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>.</param>
-    /// <param name="initialColdCapacity">Initial capacity of the cold pool.<br/>
-    /// This reserve pool is only acceded when the hot pool gets full or empty since it's slower.<br/>
+    /// <param name="capacity">Capacity of the pool.<br/>
+    /// This region of the pool support concurrent access.<br/>
+    /// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.</param>
+    /// <param name="reserve">Initial capacity of the reserve.<br/>
+    /// This reserve pool is only acceded when the non-reserve capacity gets full or empty.<br/>
+    /// This is because this region can only be acceded by a single thread<br/>
     /// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.</param>
     /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
     /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
-    public DynamicValueObjectPool(int hotCapacity, int initialColdCapacity, Func<T>? factory)
+    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="capacity"/> is lower than 1.</exception>
+    public DynamicValueObjectPool(int capacity, int reserve, Func<T>? factory)
     {
-        if (hotCapacity < 1) Utils.ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne();
-        if (initialColdCapacity < 0) Utils.ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative();
+        if (capacity < 1) Utils.ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne();
+        if (reserve < 0) Utils.ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative();
 
         this.factory = factory ?? ObjectPoolHelper<T>.Factory;
-        array = new ValueObjectWrapper<T>[hotCapacity - 1]; // -1 due to firstElement.
-        reserve = new T[initialColdCapacity];
+        array = new ValueObjectWrapper<T>[capacity - 1]; // -1 due to firstElement.
+        this.reserve = new T[reserve];
 
         GCCallback<T> _ = new(this);
     }
@@ -80,20 +81,22 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
     /// <summary>
     /// Creates a pool of objects.
     /// </summary>
-    /// <param name="hotCapacity">Hot capacity of the pool.<br/>
-    /// If this capacity is fulled, the pool will expand a cold region.<br/>
-    /// The hot capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>.</param>
+    /// <param name="capacity">Capacity of the pool.<br/>
+    /// This region of the pool support concurrent access.<br/>
+    /// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.</param>
     /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
     /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
-    public DynamicValueObjectPool(int hotCapacity, Func<T>? factory) : this(hotCapacity, hotCapacity, factory) { }
+    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="capacity"/> is lower than 1.</exception>
+    public DynamicValueObjectPool(int capacity, Func<T>? factory) : this(capacity, capacity, factory) { }
 
     /// <summary>
     /// Creates a pool of objects.
     /// </summary>
-    /// <param name="hotCapacity">Hot capacity of the pool. If this capacity is fulled, the pool will expand a cold region.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="hotCapacity"/> is lower than 1.</exception>
-    public DynamicValueObjectPool(int hotCapacity) : this(hotCapacity, hotCapacity, null) { }
+    /// <param name="capacity">Capacity of the pool.<br/>
+    /// This region of the pool support concurrent access.<br/>
+    /// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Throw when <paramref name="capacity"/> is lower than 1.</exception>
+    public DynamicValueObjectPool(int capacity) : this(capacity, capacity, null) { }
 
     /// <summary>
     /// Creates a pool of objects.

@@ -68,12 +68,10 @@ internal static class Utils
     public static void ThrowArgumentNullException_Element()
         => throw new ArgumentNullException("element");
 
-    public static void ThrowArgumentOutOfRangeException_InitialColdCapacityCanNotBeNegative()
-        => throw new ArgumentOutOfRangeException("initialColdCapacity", "Can't be negative.");
 
-    public static void ThrowArgumentOutOfRangeException_InitialCapacityCanNotBeNegative()
-        => throw new ArgumentOutOfRangeException("initialCapacity", "Can't be negative.");
+    public static void ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative()
+        => throw new ArgumentOutOfRangeException("reserve", "Can't be negative.");
 
-    public static void ThrowArgumentOutOfRangeException_HotCapacityCanNotBeLowerThanOne()
-        => throw new ArgumentOutOfRangeException("hotCapacity", "Can't be lower than 1.");
+    public static void ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne()
+        => throw new ArgumentOutOfRangeException("capacity", "Can't be lower than 1.");
 }
