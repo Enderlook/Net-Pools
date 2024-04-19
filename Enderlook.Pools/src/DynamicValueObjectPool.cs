@@ -158,15 +158,11 @@ public sealed class DynamicValueObjectPool<T> : ObjectPool<T> where T : struct
     }
 
     /// <summary>
-    /// Return rented object to pool.<br/>
-    /// Default instances are discarded.
+    /// Return rented object to pool.
     /// </summary>
     /// <param name="element">Object to return.</param>
     public override void Return(T element)
     {
-        if (EqualityComparer<T>.Default.Equals(element, default))
-            return;
-
         // Intentionally not using interlocked here.
         // In a worst case scenario two objects may be stored into same slot.
         // It is very unlikely to happen and will only mean that one of the objects will get collected.

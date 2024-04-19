@@ -12,6 +12,7 @@
 - Reduce IL size by deduplicating classes.
 - Reduce generic instantiations when using code.
 - Fix possible racing condition in `ObjectPool<T>.Shared` where `T` is a value type.
+- Support pooling default elements in `DynamicValueObjectPool<T>`.
 
 ## v0.2.3
 - Improve documentation.
