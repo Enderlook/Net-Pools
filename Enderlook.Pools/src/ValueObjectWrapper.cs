@@ -21,8 +21,7 @@ internal struct ValueObjectWrapper<T> where T : struct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryPopValue([NotNullWhen(true)] out T value)
     {
-        int oldLock;
-        while ((oldLock = Interlocked.Exchange(ref @lock, 1)) == 1) ;
+        int oldLock = Lock();
 
         if (oldLock == 2)
         {
@@ -44,8 +43,7 @@ internal struct ValueObjectWrapper<T> where T : struct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TrySetValue(ref T value)
     {
-        int oldLock;
-        while ((oldLock = Interlocked.Exchange(ref @lock, 1)) == 1) ;
+        int oldLock = Lock();
 
         if (oldLock == 2)
         {
@@ -61,8 +59,27 @@ internal struct ValueObjectWrapper<T> where T : struct
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
-        while (Interlocked.Exchange(ref @lock, 1) == 1) ;
+        Lock();
         value = default;
         @lock = 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int Lock()
+    {
+        SpinWait spinWait = new();
+        int oldLock = @lock;
+        while (true)
+        {
+            if (oldLock != 1)
+            {
+                oldLock = Interlocked.CompareExchange(ref @lock, oldLock, 1);
+                if (oldLock != 1)
+                    break;
+            }
+            spinWait.SpinOnce();
+            oldLock = @lock;
+        }
+        return oldLock;
     }
 }

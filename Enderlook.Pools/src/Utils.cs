@@ -2,6 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Enderlook.Pools;
 
@@ -63,6 +64,56 @@ internal static class Utils
         return ref MemoryMarshal.GetReference((Span<T>)array);
 #endif
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T NullExchange<T>(ref T? slot)
+        where T : class
+    {
+        SpinWait spinWait = new();
+        T? current;
+        while (true)
+        {
+            current = Interlocked.Exchange(ref slot, null);
+            if (current is not null)
+                break;
+            spinWait.SpinOnce();
+        }
+        return current;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int MinusOneExchange(ref int slot)
+    {
+        SpinWait spinWait = new();
+        int current;
+        while (true)
+        {
+            current = Interlocked.Exchange(ref slot, -1);
+            if (current != -1)
+                break;
+            spinWait.SpinOnce();
+        }
+        return current;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int MinusOneRead(ref int slot)
+    {
+        SpinWait spinWait = new();
+        int current;
+        while (true)
+        {
+            current = Volatile.Read(ref slot);
+            if (current != -1)
+                break;
+            spinWait.SpinOnce();
+        }
+        return current;
+    }
+
+    [DoesNotReturn]
+    public static void ThrowArgumentNullException_Array()
+        => throw new ArgumentNullException("array");
 
     [DoesNotReturn]
     public static void ThrowArgumentNullException_Element()

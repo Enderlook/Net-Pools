@@ -492,7 +492,6 @@ TElement, TLocal, TStorage> : ObjectPool<TElement>
             }
         }
 
-        SpinWait spinWait;
         {
             // Trim each of the thread local fields.
             // Note that threads may be modifying their thread local fields concurrently with this trimming happening.
@@ -500,15 +499,7 @@ TElement, TLocal, TStorage> : ObjectPool<TElement>
             // that we may potentially trim an object we didn't need to.
             // Both of these should be rare occurrences.
 
-            spinWait = new();
-            GCHandle[]? allThreadLocalElements_;
-            while (true)
-            {
-                allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
-                if (allThreadLocalElements_ is not null)
-                    break;
-                spinWait.SpinOnce();
-            }
+            GCHandle[] allThreadLocalElements_ = Utils.NullExchange(ref allThreadLocalElements);
             int length = allThreadLocalElementsCount;
 
             ref GCHandle start = ref Utils.GetArrayDataReference(allThreadLocalElements_);
@@ -660,15 +651,7 @@ TElement, TLocal, TStorage> : ObjectPool<TElement>
         TLocal? local = Unsafe.As<SharedThreadLocalElement, TLocal>(ref slot);
         SharedObjectPool<TElement, TLocal, TStorage>.threadLocalElement = local;
 
-        SpinWait spinWait = new();
-        GCHandle[]? allThreadLocalElements_;
-        while (true)
-        {
-            allThreadLocalElements_ = Interlocked.Exchange(ref allThreadLocalElements, null);
-            if (allThreadLocalElements_ is not null)
-                break;
-            spinWait.SpinOnce();
-        };
+        GCHandle[] allThreadLocalElements_ = Utils.NullExchange(ref allThreadLocalElements);
 
         int count_ = allThreadLocalElementsCount;
         if (unchecked((uint)count_ >= (uint)allThreadLocalElements_.Length))

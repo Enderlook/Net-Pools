@@ -304,11 +304,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
             if (reserveTrimPercentage == 1)
             {
                 Debug.Assert(reserveTrimMilliseconds == 0);
-                ObjectWrapper[]? reserve_;
-                do
-                {
-                    reserve_ = Interlocked.Exchange(ref reserve, null);
-                } while (reserve_ is null);
+                ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
                 reserveCount_ = 0;
 
                 if (reserve_.Length <= items.Length)
@@ -337,11 +333,7 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
                     // This time is approximate, with the time set not when the element is stored but when we see it during a Trim,
                     // so it takes at least two Trim calls (and thus two gen2 GCs) to drop elements, unless we're in high memory pressure.
 
-                    ObjectWrapper[]? reserve_;
-                    do
-                    {
-                        reserve_ = Interlocked.Exchange(ref reserve, null);
-                    } while (reserve_ is null);
+                    ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
                     reserveCount_ = reserveCount;
 
                     int toRemove = (int)Math.Ceiling(reserveCount_ * reserveTrimPercentage);
@@ -378,16 +370,8 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     [MethodImpl(MethodImplOptions.NoInlining)]
     private T FillFromReserve()
     {
-        SpinWait spinWait = new();
         ObjectWrapper[] items = array;
-        ObjectWrapper[]? reserve_;
-        while (true)
-        {
-            reserve_ = Interlocked.Exchange(ref reserve, null);
-            if (reserve_ is not null)
-                break;
-            spinWait.SpinOnce();
-        }
+        ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
 
         int oldCount = reserveCount;
 #if DEBUG
@@ -446,16 +430,8 @@ public sealed class DynamicObjectPool<T> : ObjectPool<T> where T : class
     {
         if (obj is null) return;
 
-        SpinWait spinWait = new();
         ObjectWrapper[] items = array;
-        ObjectWrapper[]? reserve_;
-        while (true)
-        {
-            reserve_ = Interlocked.Exchange(ref reserve, null);
-            if (reserve_ is not null)
-                break;
-            spinWait.SpinOnce();
-        }
+        ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
 
 #if DEBUG
         int count = reserveCount;

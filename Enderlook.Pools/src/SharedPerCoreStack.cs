@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
 namespace Enderlook.Pools;
 
@@ -19,34 +18,14 @@ internal struct SharedPerCoreStack<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetCount()
-    {
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Volatile.Read(ref count);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        }
-        return count_;
-    }
+    public int GetCount() => Utils.MinusOneRead(ref count);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryPush(T element)
     {
         T?[] items = array;
 
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Interlocked.Exchange(ref count, -1);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        };
+        int count_ = Utils.MinusOneExchange(ref count);
 
         bool enqueued = false;
         if (unchecked((uint)count_ < (uint)items.Length))
@@ -72,15 +51,7 @@ internal struct SharedPerCoreStack<T>
     {
         T?[] items = array;
 
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Interlocked.Exchange(ref count, -1);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        };
+        int count_ = Utils.MinusOneExchange(ref count);
 
         int newCount = count_ - 1;
         if (unchecked((uint)newCount < (uint)items.Length))
@@ -109,24 +80,8 @@ internal struct SharedPerCoreStack<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool FillFromGlobalReserve(out T? element, ref T?[]? globalReserve, ref int globalReserveCount)
     {
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Interlocked.Exchange(ref count, -1);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        }
-
-        T?[]? globalReserve_;
-        while (true)
-        {
-            globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-            if (globalReserve_ is not null)
-                break;
-            spinWait.SpinOnce();
-        }
+        int count_ = Utils.MinusOneExchange(ref count);
+        T?[] globalReserve_ = Utils.NullExchange(ref globalReserve);
 
         int globalCount = globalReserveCount;
         bool found;
@@ -167,24 +122,8 @@ internal struct SharedPerCoreStack<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void MoveToGlobalReserve(T obj, ref T?[]? globalReserve, ref int globalReserveCount)
     {
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Interlocked.Exchange(ref count, -1);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        }
-
-        T?[]? globalReserve_;
-        while (true)
-        {
-            globalReserve_ = Interlocked.Exchange(ref globalReserve, null);
-            if (globalReserve_ is not null)
-                break;
-            spinWait.SpinOnce();
-        }
+        int count_ = Utils.MinusOneExchange(ref count);
+        T?[] globalReserve_ = Utils.NullExchange(ref globalReserve);
 
         T?[] items = array;
         int amount = count_ + 1;
@@ -219,16 +158,7 @@ internal struct SharedPerCoreStack<T>
 
         T?[] items = array;
 
-        SpinWait spinWait = new();
-        int count_;
-        while (true)
-        {
-            count_ = Interlocked.Exchange(ref count, -1);
-            if (count_ != -1)
-                break;
-            spinWait.SpinOnce();
-        };
-
+        int count_ = Utils.MinusOneExchange(ref count);
         if (count_ == 0)
             goto end;
 
