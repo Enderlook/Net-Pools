@@ -18,6 +18,7 @@
 - Replace constructors in `FastObjectPool<T>` and `SafeValueObjectPool<T>` and add init-only properties to configure it.
 - Support configuring if its reserve (previously known as cold capacity) can be resized in `FastObjectPool<T>` and `SafeValueObjectPool<T>`.
 - Support disposing and custom dispoing in `SafeValueObjectPool<T>`.
+- Fix `Trim(bool)` in `ObjectPool<T>.Shared` not trimming correctly values.
 
 ## v0.2.3
 - Improve documentation.

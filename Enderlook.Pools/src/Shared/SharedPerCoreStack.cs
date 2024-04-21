@@ -158,8 +158,8 @@ internal struct SharedPerCoreStack<T>
 
         T?[] items = array;
 
-        int count_ = Utils.MinusOneExchange(ref count);
-        if (count_ == 0)
+        int oldCount = Utils.MinusOneExchange(ref count);
+        if (oldCount == 0)
             goto end;
 
         int millisecondsTimeStamp = this.millisecondsTimeStamp;
@@ -175,16 +175,16 @@ internal struct SharedPerCoreStack<T>
         // We've elapsed enough time since the first item went into the stack.
         // Drop the top item so it can be collected and make the stack look a little newer.
 
-        Array.Clear(items, 0, Math.Min(count_, trimCount));
-        count_ = Math.Max(count_ - trimCount, 0);
+        int newCount = Math.Max(oldCount - trimCount, 0);
+        Array.Clear(items, newCount, oldCount - newCount);
 
-        millisecondsTimeStamp = count_ > 0 ?
+        millisecondsTimeStamp = oldCount > 0 ?
             millisecondsTimeStamp + (trimMilliseconds / 4) // Give the remaining items a bit more time.
             : 0;
 
     endAndAssign:
         this.millisecondsTimeStamp = millisecondsTimeStamp;
     end:
-        count = count_;
+        count = oldCount;
     }
 }
