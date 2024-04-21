@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -119,6 +120,8 @@ internal static class Utils
     public static void ThrowArgumentNullException_Element()
         => throw new ArgumentNullException("element");
 
+    public static void ThrowArgumentOutOfRangeException_ArrayLength()
+        => throw new ArgumentOutOfRangeException("element", "Doesn't match expected array length");
 
     public static void ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative()
         => throw new ArgumentOutOfRangeException("reserve", "Can't be negative.");
