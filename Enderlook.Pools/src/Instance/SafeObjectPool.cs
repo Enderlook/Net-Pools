@@ -13,26 +13,6 @@ namespace Enderlook.Pools;
 public sealed class SafeObjectPool<T> : ObjectPool<T>
     where T : class
 {
-    private const byte IMPLEMENT_IDISPOSABLE = 1;
-    private const byte MAY_IMPLEMENT_IDISPOSABLE = 2;
-    private const byte HAS_CUSTOM_DISPOSING = 3;
-    private const byte CAN_NOT_IMPLEMENT_IDISPOSABLE = 4;
-    private const byte NULL_CUSTOM_DISPOSING = 5;
-
-    private static readonly byte DisposableMode = typeof(IDisposable).IsAssignableFrom(typeof(T))
-        ? IMPLEMENT_IDISPOSABLE
-        : typeof(T).IsSealed ? CAN_NOT_IMPLEMENT_IDISPOSABLE : MAY_IMPLEMENT_IDISPOSABLE;
-    private static readonly Action<T>? DisposeAction = DisposableMode switch
-    {
-        IMPLEMENT_IDISPOSABLE => e => Unsafe.As<IDisposable>(e).Dispose(),
-        MAY_IMPLEMENT_IDISPOSABLE => e =>
-        {
-            if (e is IDisposable disposable)
-                disposable.Dispose();
-        },
-        _ => equals => { },
-    };
-
     /// <summary>
     /// Delegate that instantiates new object.
     /// </summary>
@@ -128,33 +108,33 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
         get => disposeMode switch
         {
-            HAS_CUSTOM_DISPOSING => freeCallback,
-            NULL_CUSTOM_DISPOSING => null,
-            _ => DisposeAction,
+            Disposing<T>.HAS_CUSTOM_DISPOSING => freeCallback,
+            Disposing<T>.NULL_CUSTOM_DISPOSING => null,
+            _ => Disposing<T>.DisposeAction,
         };
         init
         {
             if (value is null)
             {
-                disposeMode = NULL_CUSTOM_DISPOSING;
+                disposeMode = Disposing<T>.NULL_CUSTOM_DISPOSING;
 #pragma warning disable CA1816 // Dispose methods should call SuppressFinalize
                 GC.SuppressFinalize(this);
 #pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
             }
-            else if (ReferenceEquals(value, DisposeAction))
+            else if (ReferenceEquals(value, Disposing<T>.DisposeAction))
             {
                 freeCallback = null;
-                disposeMode = DisposableMode;
+                disposeMode = Disposing<T>.DisposableMode;
             }
             else
             {
                 freeCallback = value;
-                disposeMode = HAS_CUSTOM_DISPOSING;
+                disposeMode = Disposing<T>.HAS_CUSTOM_DISPOSING;
             }
         }
     }
     private Action<T>? freeCallback;
-    private byte disposeMode = DisposableMode;
+    private byte disposeMode = Disposing<T>.DisposableMode;
 
     /// <summary>
     /// Delegate which instantiates new objects.<br/>
@@ -187,7 +167,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// </summary>
     ~SafeObjectPool()
     {
-        if (disposeMode is NULL_CUSTOM_DISPOSING or CAN_NOT_IMPLEMENT_IDISPOSABLE)
+        if (disposeMode is Disposing<T>.NULL_CUSTOM_DISPOSING or Disposing<T>.CAN_NOT_IMPLEMENT_IDISPOSABLE)
             return;
         Trim(true);
     }
@@ -340,9 +320,9 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
 
             bool complete = disposeMode switch
             {
-                IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDispose(), items, arrayTrimCount),
-                MAY_IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.TryCallDispose(), items, arrayTrimCount),
-                HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomObjectFree<T>(freeCallback!), items, arrayTrimCount),
+                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDispose(), items, arrayTrimCount),
+                Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.TryCallDispose(), items, arrayTrimCount),
+                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomObjectFree<T>(freeCallback!), items, arrayTrimCount),
                 _ => FreeHelper.ClearPool(items, arrayTrimCount),
             };
 
@@ -405,13 +385,13 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         {
             switch (disposeMode)
             {
-                case IMPLEMENT_IDISPOSABLE:
+                case Disposing<T>.IMPLEMENT_IDISPOSABLE:
                     FreeHelper.ClearReserve(new FreeHelper.CallDispose(), reserve_, oldReserveCount, newReserveCount);
                     break;
-                case MAY_IMPLEMENT_IDISPOSABLE:
+                case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE:
                     FreeHelper.ClearReserve(new FreeHelper.TryCallDispose(), reserve_, oldReserveCount, newReserveCount);
                     break;
-                case HAS_CUSTOM_DISPOSING:
+                case Disposing<T>.HAS_CUSTOM_DISPOSING:
                     FreeHelper.ClearReserve(new FreeHelper.CustomObjectFree<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
                     break;
             }
@@ -510,13 +490,13 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             {
                 switch (disposeMode)
                 {
-                    case IMPLEMENT_IDISPOSABLE:
+                    case Disposing<T>.IMPLEMENT_IDISPOSABLE:
                         Unsafe.As<IDisposable>(obj).Dispose();
                         break;
-                    case MAY_IMPLEMENT_IDISPOSABLE when obj is IDisposable disposable:
+                    case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE when obj is IDisposable disposable:
                         disposable.Dispose();
                         break;
-                    case HAS_CUSTOM_DISPOSING:
+                    case Disposing<T>.HAS_CUSTOM_DISPOSING:
                         Action<T>? freeCallback_ = freeCallback;
                         Debug.Assert(freeCallback_ is not null);
                         freeCallback_(Unsafe.As<T>(obj));
