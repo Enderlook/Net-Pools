@@ -12,7 +12,12 @@
 - Reduce IL size by deduplicating classes.
 - Reduce generic instantiations when using code.
 - Fix possible racing condition in `ObjectPool<T>.Shared` where `T` is a value type.
-- Support pooling default elements in `DynamicValueObjectPool<T>`.
+- Rename `DynamicObjectPool<T>` to `FastObjectPool<T>` and `DynamicValueObjectPool<T>` to `SafeValueObjectPool<T>`.
+- Add `SafeObjectPool<T>`.
+- Support pooling default elements in `SafeValueObjectPool<T>`.
+- Replace constructors in `FastObjectPool<T>` and `SafeValueObjectPool<T>` and add init-only properties to configure it.
+- Support configuring if its reserve (previously known as cold capacity) can be resized in `FastObjectPool<T>` and `SafeValueObjectPool<T>`.
+- Support disposing and custom dispoing in `SafeValueObjectPool<T>`.
 
 ## v0.2.3
 - Improve documentation.
