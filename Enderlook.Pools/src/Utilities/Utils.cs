@@ -9,25 +9,8 @@ namespace Enderlook.Pools;
 
 internal static class Utils
 {
-    /// <summary>
-    /// Maximum length of `perCoreStacks` to use.
-    /// </summary>
-    public const int MaximumPerCoreStack = 64; // Selected to avoid needing to worry about processor groups.
-
-    /// <summary>
-    /// The maximum number of objects to store in each per-core stack.
-    /// </summary>
-    public const int MaxObjectsPerCore = 128;
-
-    /// <summary>
-    /// The initial capacity of `globalReserve`.
-    /// </summary>
-    public const int InitialGlobalReserveCapacity = 256;
-
-    /// <summary>
-    /// Number of locked stacks to employ.
-    /// </summary>
-    public static readonly int PerCoreStacksCount = Math.Min(Environment.ProcessorCount, MaximumPerCoreStack);
+    // Never change this value of `MinusOneExchange` will change.
+    public const int LOCKED = -1;
 
     public enum MemoryPressure
     {
@@ -89,7 +72,7 @@ internal static class Utils
         int current;
         while (true)
         {
-            current = Interlocked.Exchange(ref slot, -1);
+            current = Interlocked.Exchange(ref slot, LOCKED);
             if (current != -1)
                 break;
             spinWait.SpinOnce();
