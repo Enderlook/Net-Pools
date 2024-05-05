@@ -41,8 +41,9 @@ internal static class FreeHelper
         return false;
     }
 
-    public static bool ClearPool<T>(ValueObjectWrapper<T>[] items, int trimCount)
+    public static bool ClearPool<T, U>(U[] items, int trimCount)
         where T : struct
+        where U : IValueWrapper<T>
     {
         if (trimCount == 0)
             return false;
@@ -50,8 +51,8 @@ internal static class FreeHelper
         int length = items.Length;
         if (length > trimCount)
         {
-            ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
-            ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, length);
+            ref U current = ref Utils.GetArrayDataReference(items);
+            ref U end = ref Unsafe.Add(ref current, length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 if (current.NotSynchronizedHasValue
@@ -63,8 +64,8 @@ internal static class FreeHelper
         }
         else
         {
-            ref ValueObjectWrapper<T> current = ref Utils.GetArrayDataReference(items);
-            ref ValueObjectWrapper<T> end = ref Unsafe.Add(ref current, length);
+            ref U current = ref Utils.GetArrayDataReference(items);
+            ref U end = ref Unsafe.Add(ref current, length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
                 if (current.NotSynchronizedHasValue)
@@ -154,11 +155,22 @@ internal static class FreeHelper
         }
     }
 
-    public struct CallDisposePoolValue<T> : IFreePool<ValueObjectWrapper<T>>
+    public struct CallDisposePoolValue<T> : IFreePool<ValueMutex<T>>, IFreePool<ValueAtom<T>>
         where T : struct
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryFree(ref ValueObjectWrapper<T> value)
+        public bool TryFree(ref ValueMutex<T> value)
+        {
+            if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
+            {
+                ((IDisposable)element).Dispose();
+                return true;
+            }
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryFree(ref ValueAtom<T> value)
         {
             if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
             {
@@ -236,7 +248,7 @@ internal static class FreeHelper
         }
     }
 
-    public struct CustomFreeValue<T> : IFreePool<ValueObjectWrapper<T>>, IFreeReserve<T>
+    public struct CustomFreeValue<T> : IFreePool<ValueMutex<T>>, IFreePool<ValueAtom<T>>, IFreeReserve<T>
         where T : struct
     {
         private readonly Action<T> action;
@@ -252,7 +264,18 @@ internal static class FreeHelper
         public void Free(ref T value) => action(value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryFree(ref ValueObjectWrapper<T> value)
+        public bool TryFree(ref ValueMutex<T> value)
+        {
+            if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
+            {
+                action(element);
+                return true;
+            }
+            return false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryFree(ref ValueAtom<T> value)
         {
             if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
             {

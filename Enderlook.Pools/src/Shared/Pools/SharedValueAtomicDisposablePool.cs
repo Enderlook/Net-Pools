@@ -28,7 +28,7 @@ internal sealed class SharedValueAtomicDisposablePool<TElement> : ObjectPool<TEl
         while (Unsafe.IsAddressLessThan(ref current, ref end2))
         {
             SharedThreadLocalElementDisposableAtomic<TElement>? sharedThreadLocalElement = Unsafe.As<SharedThreadLocalElementDisposableAtomic<TElement>?>(current.Target);
-            if (sharedThreadLocalElement is not null && sharedThreadLocalElement.Value.Has)
+            if (sharedThreadLocalElement is not null && sharedThreadLocalElement.Value.NotSynchronizedHasValue)
                 count_++;
             current = Unsafe.Add(ref current, 1);
         }
@@ -45,12 +45,12 @@ internal sealed class SharedValueAtomicDisposablePool<TElement> : ObjectPool<TEl
         {
             Debug.Assert(threadLocalElement is SharedThreadLocalElementDisposableAtomic<TElement>);
             SharedThreadLocalElementDisposableAtomic<TElement> threadLocalElement_ = Unsafe.As<SharedThreadLocalElementDisposableAtomic<TElement>>(threadLocalElement);
-            if (threadLocalElement_.Value.Has)
+            if (threadLocalElement_.Value.NotSynchronizedHasValue)
             {
                 long slot = Interlocked.Exchange(ref Unsafe.As<ValueAtom<TElement>, long>(ref threadLocalElement_.Value), default);
                 ValueAtom<TElement> nullable = Unsafe.As<long, ValueAtom<TElement>>(ref slot);
-                if (nullable.Has)
-                    return nullable.Value!;
+                if (nullable.NotSynchronizedHasValue)
+                    return nullable.NotSynchronizedValue!;
             }
         }
 
@@ -106,14 +106,14 @@ internal sealed class SharedValueAtomicDisposablePool<TElement> : ObjectPool<TEl
         object? threadLocalElement = SharedPool<TElement, ObjectWrapper>.ThreadLocalElement;
         Debug.Assert(threadLocalElement is null or SharedThreadLocalElementDisposableAtomic<TElement>);
         SharedThreadLocalElementDisposableAtomic<TElement> threadLocalElement_ = Unsafe.As<SharedThreadLocalElementDisposableAtomic<TElement>?>(threadLocalElement) ?? SlowPath();
-        if (threadLocalElement_.Value.Has)
+        if (threadLocalElement_.Value.NotSynchronizedHasValue)
         {
             ValueAtom<TElement> nullable = new(element);
             long slot = Interlocked.Exchange(ref Unsafe.As<ValueAtom<TElement>, long>(ref threadLocalElement_.Value), Unsafe.As<ValueAtom<TElement>, long>(ref nullable));
             nullable = Unsafe.As<long, ValueAtom<TElement>>(ref slot);
-            if (!nullable.Has)
+            if (!nullable.NotSynchronizedHasValue)
                 return;
-            element = nullable.Value!;
+            element = nullable.NotSynchronizedValue!;
         }
 
         // Try to store the object from one of the per-core stacks.

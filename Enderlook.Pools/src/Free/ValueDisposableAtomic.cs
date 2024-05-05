@@ -86,10 +86,10 @@ internal struct ValueDisposableAtomic<TElement> : ISharedPoolHelperValue
         // potentially live forever.
         long value = Interlocked.Exchange(ref Unsafe.As<ValueAtom<TElement>, long>(ref slot.Value), default);
         ValueAtom<TElement> nullable = Unsafe.As<long, ValueAtom<TElement>>(ref value);
-        if (nullable.Has)
+        if (nullable.NotSynchronizedHasValue)
         {
-            Debug.Assert(nullable.Value is IDisposable);
-            ((IDisposable)nullable.Value).Dispose();
+            Debug.Assert(nullable.NotSynchronizedValue is IDisposable);
+            ((IDisposable)nullable.NotSynchronizedValue).Dispose();
         }
     }
 }

@@ -18,9 +18,9 @@ internal class SharedThreadLocalElementDisposableAtomic<T> : SharedThreadLocalEl
 
     ~SharedThreadLocalElementDisposableAtomic()
     {
-        if (Value.Has)
+        if (Value.NotSynchronizedHasValue)
         {
-            ((IDisposable)Value.Value!).Dispose();
+            ((IDisposable)Value.NotSynchronizedValue!).Dispose();
         }
     }
 }

@@ -4,7 +4,8 @@ using System.Threading;
 
 namespace Enderlook.Pools;
 
-internal struct ValueObjectWrapper<T> where T : struct
+internal struct ValueMutex<T> : IValueWrapper<T>
+    where T : struct
 {
     // UNLOCK_EMPTY = 0;
     // LOCK = 1;
