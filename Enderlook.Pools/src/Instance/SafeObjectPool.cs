@@ -320,9 +320,9 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
 
             bool complete = disposeMode switch
             {
-                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDispose(), items, arrayTrimCount),
-                Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.TryCallDispose(), items, arrayTrimCount),
-                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomObjectFree<T>(freeCallback!), items, arrayTrimCount),
+                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDisposeReference(), items, arrayTrimCount),
+                Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.TryCallDisposeReference(), items, arrayTrimCount),
+                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomFreeReference<T>(freeCallback!), items, arrayTrimCount),
                 _ => FreeHelper.ClearPool(items, arrayTrimCount),
             };
 
@@ -386,13 +386,13 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             switch (disposeMode)
             {
                 case Disposing<T>.IMPLEMENT_IDISPOSABLE:
-                    FreeHelper.ClearReserve(new FreeHelper.CallDispose(), reserve_, oldReserveCount, newReserveCount);
+                    FreeHelper.ClearReserve(new FreeHelper.CallDisposeReference(), reserve_, oldReserveCount, newReserveCount);
                     break;
                 case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE:
-                    FreeHelper.ClearReserve(new FreeHelper.TryCallDispose(), reserve_, oldReserveCount, newReserveCount);
+                    FreeHelper.ClearReserve(new FreeHelper.TryCallDisposeReference(), reserve_, oldReserveCount, newReserveCount);
                     break;
                 case Disposing<T>.HAS_CUSTOM_DISPOSING:
-                    FreeHelper.ClearReserve(new FreeHelper.CustomObjectFree<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
+                    FreeHelper.ClearReserve(new FreeHelper.CustomFreeReference<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
                     break;
             }
             // Clear the array only if we are not gonna replace it with a new one.

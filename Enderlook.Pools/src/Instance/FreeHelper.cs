@@ -105,18 +105,19 @@ internal static class FreeHelper
         return false;
     }
 
-    public static void ClearReserve<T, U>(U item, T[] items, int oldCount, int newCount)
+    public static void ClearReserve<T, U>(U item, T?[] items, int oldCount, int newCount)
         where U : IFreeReserve<T>
     {
         Debug.Assert(oldCount >= newCount);
         Debug.Assert(oldCount <= items.Length);
-        ref T current = ref Utils.GetArrayDataReference(items);
-        ref T end = ref Unsafe.Add(ref current, oldCount);
+        ref T? current = ref Utils.GetArrayDataReference(items);
+        ref T? end = ref Unsafe.Add(ref current, oldCount);
         current = ref Unsafe.Add(ref current, newCount);
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
+            Debug.Assert(current is not null);
             item.Free(ref current);
-            current = ref Unsafe.Add(ref current, 1);
+            current = ref Unsafe.Add(ref current, 1)!;
         }
     }
 
@@ -130,7 +131,7 @@ internal static class FreeHelper
         void Free(ref T value);
     }
 
-    public struct CallDispose : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
+    public struct CallDisposeReference : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Free(ref ObjectWrapper value)
@@ -153,12 +154,9 @@ internal static class FreeHelper
         }
     }
 
-    public struct CallDispose<T> : IFreePool<ValueObjectWrapper<T>>, IFreeReserve<T>
+    public struct CallDisposePoolValue<T> : IFreePool<ValueObjectWrapper<T>>
         where T : struct
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Free(ref T value) => ((IDisposable)value).Dispose();
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryFree(ref ValueObjectWrapper<T> value)
         {
@@ -171,7 +169,17 @@ internal static class FreeHelper
         }
     }
 
-    public struct TryCallDispose : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
+    public struct CallDisposeReserveValue<T> : IFreeReserve<T>
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Free(ref T value)
+        {
+            Debug.Assert(value is not null);
+            ((IDisposable)value).Dispose();
+        }
+    }
+
+    public struct TryCallDisposeReference : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Free(ref ObjectWrapper value)
@@ -195,13 +203,13 @@ internal static class FreeHelper
         }
     }
 
-    public struct CustomObjectFree<T> : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
+    public struct CustomFreeReference<T> : IFreePool<ObjectWrapper>, IFreeReserve<ObjectWrapper>
         where T : class
     {
         private readonly Action<T> action;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CustomObjectFree(Action<T> action)
+        public CustomFreeReference(Action<T> action)
         {
             Debug.Assert(action is not null);
             this.action = action;
@@ -228,13 +236,13 @@ internal static class FreeHelper
         }
     }
 
-    public struct CustomValueObjectFree<T> : IFreePool<ValueObjectWrapper<T>>, IFreeReserve<T>
+    public struct CustomFreeValue<T> : IFreePool<ValueObjectWrapper<T>>, IFreeReserve<T>
         where T : struct
     {
         private readonly Action<T> action;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public CustomValueObjectFree(Action<T> action)
+        public CustomFreeValue(Action<T> action)
         {
             Debug.Assert(action is not null);
             this.action = action;

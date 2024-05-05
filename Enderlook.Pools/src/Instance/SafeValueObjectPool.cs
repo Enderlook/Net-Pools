@@ -317,8 +317,8 @@ public sealed class SafeValueObjectPool<T> : ObjectPool<T>
 
             bool complete = disposeMode switch
             {
-                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDispose<T>(), items, arrayTrimCount),
-                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomValueObjectFree<T>(freeCallback!), items, arrayTrimCount),
+                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDisposePoolValue<T>(), items, arrayTrimCount),
+                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomFreeValue<T>(freeCallback!), items, arrayTrimCount),
                 _ => FreeHelper.ClearPool(items, arrayTrimCount),
             };
 
@@ -382,15 +382,20 @@ public sealed class SafeValueObjectPool<T> : ObjectPool<T>
             switch (disposeMode)
             {
                 case Disposing<T>.IMPLEMENT_IDISPOSABLE:
-                    FreeHelper.ClearReserve(new FreeHelper.CallDispose<T>(), reserve_, oldReserveCount, newReserveCount);
+                    FreeHelper.ClearReserve(new FreeHelper.CallDisposeReserveValue<T>(), reserve_, oldReserveCount, newReserveCount);
                     break;
                 case Disposing<T>.HAS_CUSTOM_DISPOSING:
-                    FreeHelper.ClearReserve(new FreeHelper.CustomValueObjectFree<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
+                    FreeHelper.ClearReserve(new FreeHelper.CustomFreeValue<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
                     break;
             }
             // Clear the array only if we are not gonna replace it with a new one.
-            if (newReserveLength != oldReserveLength)
-                Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+            {
+                if (newReserveLength != oldReserveLength)
+                    Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+            }
         }
 
         if (newReserveLength != oldReserveLength)
