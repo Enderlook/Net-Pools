@@ -40,7 +40,7 @@ Additionally, it provides a local (thread-safe) pool in case of not wanting to u
 ```cs
 // If delegate is not provided, the parameterless constructor is used instead.
 ObjectPool<MyExpensiveType> pool = new SafeObjectPool<MyExpensiveType>(() => CreateExpensiveType());
-ObjectPool<MyExpensiveValueType> pool = new SafeValueObjectPool<MyExpensiveValueType>();
+ObjectPool<MyExpensiveValueType> pool = new SafeObjectPool<MyExpensiveValueType>();
 ```
 
 You can configure this local pools to have custom or default constructors of the instances, to execute specific logic (such as disposing) when trimming objects, or to disable resising of the pool.
@@ -145,7 +145,7 @@ namespace Enderlook.Pools
 	/// This pool can be configured to automatically call <see cref="IDisposable"/> of elements that are free (for example during trimming, when pool is full or when the pool is disposed itself).
 	/// </summary>
 	/// <typeparam name="T">Type of object to pool</typeparam>
-	public sealed class SafeObjectPool<T> : ObjectPool<T> where T : class
+	public sealed class SafeObjectPool<T> : ObjectPool<T>
 	{	
 		/// <summary>
 		/// Capacity of the pool.<br/>
@@ -196,64 +196,6 @@ namespace Enderlook.Pools
 		/// </summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public SafeObjectPool();
-	}
-	
-	/// <summary>
-	/// A fast, dynamically-sized and thread-safe object pool to store objects.<br/>
-	/// This pool can be configured to automatically call <see cref="IDisposable"/> of elements that are free (for example during trimming, when pool is full or when the pool is disposed itself).
-	/// </summary>
-	/// <typeparam name="T">Type of object to pool</typeparam>
-	public sealed class SafeValueObjectPool<T> : ObjectPool<T> where T : class
-	{	
-		/// <summary>
-		/// Capacity of the pool.<br/>
-		/// This region of the pool support concurrent access.<br/>
-		/// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.
-		/// </summary>
-		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
-		public int Capacity { get; init; } = Environment.ProcessorCount * 2 - 1;
-
-		/// <summary>
-		/// Current capacity of the reserve.<br/>
-		/// This reserve pool is only acceded when the non-reserve capacity gets full or empty.<br/>
-		/// This is because this region can only be acceded by a single thread<br/>
-		/// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.
-		/// </summary>
-		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is negative.</exception>
-		public int Reserve { get; init; } = Environment.ProcessorCount * 2;
-
-		/// <summary>
-		/// Determines if the reserve pool is allowed to grow and shrink given its usage.
-		/// </summary>
-		public bool IsReserveDynamic { get; init; } = true;
-
-		/// <summary>
-		/// If this value is not <see langword="null"/>, the callback will be executed on each element which is free from the pool.<br/>
-		/// That is, it will be called in elements not being stored during <see cref="Return(T)"/>, or during elements free by <see cref="Trim(bool)"/> or its automatic cleaning.<br/>
-		/// If no value is specified, by default it will include a callback which executes <see cref="IDisposable.Dispose"/> on elements which can be casted to <see cref="IDisposable"/>.
-		/// </summary>
-		/// <remarks>If no value is specified, by default it will include a callback, but we actually don't call it.<br/>
-		/// Instead we run the behaviour inline. This is to avoid the delegate call.</remarks>
-		public Action<T>? FreeCallback { get; init; }
-
-		/// <summary>
-		/// Delegate which instantiates new objects.<br/>
-		/// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
-		/// </summary>
-		public Func<T> Factory { get; }
-		
-		/// <summary>
-		/// Creates a pool of objects.
-		/// </summary>
-		/// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-		/// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-		public SafeValueObjectPool(Func<T>? factory);
-		
-		/// <summary>
-		/// Creates a pool of objects.
-		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public SafeValueObjectPool();
-	}
+	}	
 }
 ```

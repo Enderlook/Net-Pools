@@ -166,7 +166,7 @@ internal readonly struct SharedTrimInfo
 #else
                 new THelper()
 #endif
-                .TryFree(threadLocal);
+                    .TryFree(threadLocal);
                 threadLocal.MillisecondsTimeStamp = 0;
 
                 Debug.Assert(Unsafe.IsAddressLessThan(ref newCurrent, ref end));
@@ -211,7 +211,7 @@ internal readonly struct SharedTrimInfo
 #else
                     new THelper()
 #endif
-                    .TryFree(threadLocal);
+                        .TryFree(threadLocal);
                     threadLocal.MillisecondsTimeStamp = 0;
                 }
 
@@ -252,6 +252,7 @@ internal readonly struct SharedTrimInfo
             if (globalTrimPercentage == 1)
             {
                 Debug.Assert(GlobalTrimMilliseconds == 0);
+                int oldCount = count;
                 count = 0;
                 // Note: If we made the method generic over element type,
                 // `Array.Length` would be replaced with `T[].Length`
@@ -263,9 +264,9 @@ internal readonly struct SharedTrimInfo
 #if NET7_0_OR_GREATER
                     THelper
 #else
-                    new THelper()
+                        new THelper()
 #endif
-                    .Free(array, 0, length, false);
+                        .Free(array, 0, oldCount, false);
                 }
                 else
                 {
@@ -274,14 +275,14 @@ internal readonly struct SharedTrimInfo
 #else
                     new THelper()
 #endif
-                    .Free(array, 0, length, true);
+                        .Free(array, 0, oldCount, true);
                     array =
 #if NET7_0_OR_GREATER
                     THelper
 #else
                     new THelper()
 #endif
-                    .NewArray(SharedPoolHelpers.InitialGlobalReserveCapacity);
+                        .NewArray(SharedPoolHelpers.InitialGlobalReserveCapacity);
                 }
                 globalReserveMilliseconsTimeStamp = 0;
             }

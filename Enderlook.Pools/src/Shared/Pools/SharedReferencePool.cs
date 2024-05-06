@@ -3,7 +3,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Enderlook.Pools;
@@ -143,13 +142,13 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
         for (int i = 0; i < perCoreStacks_.Length; i++)
         {
             Debug.Assert(index < perCoreStacks_.Length);
-            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(new ObjectWrapper(element)))
+            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(new ObjectWrapper(old)))
                 return;
 
             if (++index == perCoreStacks_.Length)
                 index = 0;
         }
-        SlowPath2(index, element);
+        SlowPath2(index, old);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static SharedThreadLocalElementReference SlowPath()
@@ -161,13 +160,13 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
 #else
                     new THelper()
 #endif
-                    .NewLocal(),
+                        .NewLocal(),
 #if NET7_0_OR_GREATER
                     THelper
 #else
                     new THelper()
 #endif
-                    .HasLocalFinalizer,
+                        .HasLocalFinalizer,
                 ref SharedPool<TElement, ObjectWrapper>.AllThreadLocalElements,
                 ref SharedPool<TElement, ObjectWrapper>.AllThreadLocalElementsCount
             );
@@ -176,7 +175,7 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void SlowPath2(int index, TElement element)
+        static void SlowPath2(int index, object element)
         {
             SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
             ref SharedPerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks);
