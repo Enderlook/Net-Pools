@@ -331,7 +331,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         else
         {
             T? element = firstElementNotAtomic.NotSynchronizedValue;
-            if (element is null || (object)element != Interlocked.CompareExchange(ref Unsafe.As<T?, object?>(ref firstElementNotAtomic.NotSynchronizedValue), null, element))
+            if (element is null || !ReferenceEquals(element, Interlocked.CompareExchange(ref Unsafe.As<T?, object?>(ref firstElementNotAtomic.NotSynchronizedValue), null, element)))
             {
                 // Next, we look at all remaining elements.
                 Debug.Assert(array is ObjectWrapper[]);
@@ -345,7 +345,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     // In a worst case we may miss some recently returned objects.
                     Debug.Assert(current.Value is null or T);
                     element = Unsafe.As<object?, T?>(ref current.Value);
-                    if (element is not null && (object)element == Interlocked.CompareExchange(ref current.Value, null, element))
+                    if (element is not null && ReferenceEquals(element, Interlocked.CompareExchange(ref current.Value, null, element)))
                         break;
                     current = ref Unsafe.Add(ref current, 1);
                 }
