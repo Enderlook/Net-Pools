@@ -12,7 +12,7 @@
 - Reduce IL size by deduplicating classes.
 - Reduce generic instantiations when using code.
 - Fix possible racing condition in `ObjectPool<T>.Shared` where `T` is a value type.
-- Rename `DynamicObjectPool<T>` to `FastObjectPool<T>` and `DynamicValueObjectPool<T>` to `SafeValueObjectPool<T>`.
+- Rename `DynamicObjectPool<T>` to `FastObjectPool<T>` and `DynamicValueObjectPool<T>` to `SafeObjectPool<T>` and remove `where T : struct` constraint.
 - Add `SafeObjectPool<T>`.
 - Support pooling default elements in `SafeValueObjectPool<T>`.
 - Replace constructors in `FastObjectPool<T>` and `SafeValueObjectPool<T>` and add init-only properties to configure it.

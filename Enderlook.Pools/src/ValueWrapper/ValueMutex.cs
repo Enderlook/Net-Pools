@@ -5,12 +5,11 @@ using System.Threading;
 namespace Enderlook.Pools;
 
 internal struct ValueMutex<T> : IValueWrapper<T>
-    where T : struct
 {
     // UNLOCK_EMPTY = 0;
     // LOCK = 1;
     // UNLOCK_FULL = 2;
-    private T value;
+    public T? NotSynchronizedValue;
     private int @lock;
 
     public bool NotSynchronizedHasValue
@@ -26,8 +25,8 @@ internal struct ValueMutex<T> : IValueWrapper<T>
 
         if (oldLock == 2)
         {
-            value = this.value;
-            this.value = default;
+            value = this.NotSynchronizedValue!;
+            this.NotSynchronizedValue = default;
             @lock = 0;
             return true;
         }
@@ -52,7 +51,7 @@ internal struct ValueMutex<T> : IValueWrapper<T>
             return false;
         }
 
-        this.value = value;
+        this.NotSynchronizedValue = value;
         @lock = 2;
         return true;
     }
@@ -61,7 +60,7 @@ internal struct ValueMutex<T> : IValueWrapper<T>
     public void Clear()
     {
         Lock();
-        value = default;
+        NotSynchronizedValue = default;
         @lock = 0;
     }
 

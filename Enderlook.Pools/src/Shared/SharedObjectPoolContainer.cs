@@ -4,6 +4,8 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("ConsoleApp1")]
+
 namespace Enderlook.Pools;
 
 internal static class SharedObjectPoolContainer<
