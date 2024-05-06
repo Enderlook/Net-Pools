@@ -12,16 +12,8 @@ internal static class Disposing<T>
     public const byte CAN_NOT_IMPLEMENT_IDISPOSABLE = 4;
     public const byte NULL_CUSTOM_DISPOSING = 5;
 
-    public const byte IMPLEMENT_IDISPOSABLE_IS_WRAPPED = 6;
-
     public static readonly byte DisposableMode = typeof(IDisposable).IsAssignableFrom(typeof(T))
         ? IMPLEMENT_IDISPOSABLE
-        : typeof(T).IsSealed
-            ? CAN_NOT_IMPLEMENT_IDISPOSABLE
-            : MAY_IMPLEMENT_IDISPOSABLE;
-
-    public static readonly byte DisposableMode2 = typeof(IDisposable).IsAssignableFrom(typeof(T))
-        ? (typeof(T).IsValueType ? IMPLEMENT_IDISPOSABLE_IS_WRAPPED : IMPLEMENT_IDISPOSABLE)
         : typeof(T).IsSealed
             ? CAN_NOT_IMPLEMENT_IDISPOSABLE
             : MAY_IMPLEMENT_IDISPOSABLE;

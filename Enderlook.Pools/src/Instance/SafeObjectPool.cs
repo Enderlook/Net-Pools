@@ -11,23 +11,29 @@ namespace Enderlook.Pools;
 /// </summary>
 /// <typeparam name="T">Type of object to pool</typeparam>
 public sealed class SafeObjectPool<T> : ObjectPool<T>
-    where T : class
 {
     /// <summary>
     /// Delegate that instantiates new object.
     /// </summary>
-    private readonly Func<T> factory;
+    internal readonly Func<T> factory;
 
     /// <summary>
     /// Storage for the pool objects.<br/>
     /// The array is not an stack so the whole array must be traversed to find objects.
     /// </summary>
-    private readonly ObjectWrapper[] array;
+    internal readonly Array array;
 
     /// <summary>
     /// The first item is stored in a dedicated field because we expect to be able to satisfy most requests from it.
     /// </summary>
-    private T? firstElement;
+    private ValueMutex<T> firstElementNotAtomic;
+
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+    /// <summary>
+    /// The first item is stored in a dedicated field because we expect to be able to satisfy most requests from it.
+    /// </summary>
+    private ValueAtom<T> firstElementAtomic;
+#endif
 
     /// <summary>
     /// A dynamic-size stack reserve of objects.<br/>
@@ -36,12 +42,12 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.<br/>
     /// However, those operations only moves the first half of the array to prevent a point where this is executed on each rent or return.
     /// </summary>
-    private ObjectWrapper[]? reserve;
+    internal Array? reserve;
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="reserve"/>.
     /// </summary>
-    private int reserveCount;
+    internal int reserveCount;
 
     /// <summary>
     /// Keep record of last time <see cref="reserve"/> was trimmed;
@@ -61,11 +67,22 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
     public int Capacity
     {
-        get => array.Length + 1;
+        get => GetArrayLenght() + 1;
         init
         {
             if (value < 1) Utils.ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne();
-            array = new ObjectWrapper[value - 1]; // -1 due to firstElement.
+            value -= 1;  // -1 due to firstElement.
+            if (typeof(T).IsValueType)
+            {
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+                if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                    array = new ValueAtom<T>[value];
+                else
+#endif
+                array = new ValueMutex<T>[value];
+            }
+            else
+                array = new ObjectWrapper[value];
         }
     }
 
@@ -80,15 +97,25 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
         get
         {
-            ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
-            int count = reserve_.Length;
+            Array? reserve_ = Utils.NullExchange(ref reserve);
+            int count;
+            if (typeof(T).IsValueType)
+            {
+                Debug.Assert(reserve_ is T[]);
+                count = Unsafe.As<T[]>(reserve_).Length;
+            }
+            else
+            {
+                Debug.Assert(reserve_ is ObjectWrapper[]);
+                count = Unsafe.As<ObjectWrapper[]>(reserve_).Length;
+            }
             reserve = reserve_;
             return count;
         }
         init
         {
             if (value < 0) Utils.ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative();
-            reserve = new ObjectWrapper[value];
+            reserve = typeof(T).IsValueType ? new T[value] : new ObjectWrapper[value];
         }
     }
 
@@ -133,8 +160,8 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             }
         }
     }
-    private Action<T>? freeCallback;
-    private byte disposeMode = Disposing<T>.DisposableMode;
+    internal Action<T>? freeCallback;
+    internal byte disposeMode = Disposing<T>.DisposableMode;
 
     /// <summary>
     /// Delegate which instantiates new objects.<br/>
@@ -151,8 +178,22 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
         this.factory = factory ?? ObjectPoolHelper<T>.Factory;
         int capacity = Environment.ProcessorCount * 2;
-        array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
-        reserve = new ObjectWrapper[capacity];
+        int arrayLength = capacity - 1; // -1 due to firstElement.
+        if (typeof(T).IsValueType)
+        {
+            reserve = new T[capacity];
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                array = new ValueAtom<T>[arrayLength];
+            else
+#endif
+            array = new ValueMutex<T>[arrayLength];
+        }
+        else
+        {
+            reserve = new ObjectWrapper[capacity];
+            array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
+        }
         GCCallback<T> _ = new(this);
     }
 
@@ -175,15 +216,53 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
-        int count = firstElement is null ? 0 : 1;
-        ObjectWrapper[] items = array;
-        ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-        ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
-        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        int count;
+        if (typeof(T).IsValueType)
         {
-            if (current.Value is not null)
-                count++;
-            current = ref Unsafe.Add(ref current, 1);
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                count = firstElementAtomic.NotSynchronizedHasValue ? 1 : 0;
+                Debug.Assert(array is ValueAtom<T>[]);
+                ValueAtom<T>[] items = Unsafe.As<ValueAtom<T>[]>(array);
+                ref ValueAtom<T> current = ref Utils.GetArrayDataReference(items);
+                ref ValueAtom<T> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
+                {
+                    if (current.NotSynchronizedHasValue)
+                        count++;
+                    current = ref Unsafe.Add(ref current, 1);
+                }
+            }
+            else
+#endif
+            {
+                count = firstElementNotAtomic.NotSynchronizedHasValue ? 1 : 0;
+                Debug.Assert(array is ValueMutex<T>[]);
+                ValueMutex<T>[] items = Unsafe.As<ValueMutex<T>[]>(array);
+                ref ValueMutex<T> current = ref Utils.GetArrayDataReference(items);
+                ref ValueMutex<T> end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
+                {
+                    if (current.NotSynchronizedHasValue)
+                        count++;
+                    current = ref Unsafe.Add(ref current, 1);
+                }
+            }
+        }
+        else
+        {
+            count = firstElementNotAtomic.NotSynchronizedValue is null ? 0 : 1;
+            Debug.Assert(array is ObjectWrapper[]);
+            ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
+            while (Unsafe.IsAddressLessThan(ref current, ref end))
+            {
+                if (current.Value is not null)
+                    count++;
+                current = ref Unsafe.Add(ref current, 1);
+            }
         }
         return count + reserveCount;
     }
@@ -196,30 +275,87 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         // Note that intitial read are optimistically not synchronized. This is intentional.
         // We will interlock only when we have a candidate.
         // In a worst case we may miss some recently returned objects.
-        T? element = firstElement;
-        if (element is null || element != Interlocked.CompareExchange(ref firstElement, null, element))
+        if (typeof(T).IsValueType)
         {
-            // Next, we look at all remaining elements.
-            ObjectWrapper[] items = array;
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
-            while (Unsafe.IsAddressLessThan(ref current, ref end))
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
             {
-                // Note that intitial read are optimistically not synchronized. This is intentional.
-                // We will interlock only when we have a candidate.
-                // In a worst case we may miss some recently returned objects.
-                Debug.Assert(current.Value is null or T);
-                element = Unsafe.As<T?>(current.Value);
-                if (element is not null && element == Interlocked.CompareExchange(ref current.Value, null, element))
-                    break;
-                current = ref Unsafe.Add(ref current, 1);
+                if (!firstElementAtomic.NotSynchronizedHasValue || firstElementAtomic.TryPopValue(out T value))
+                {
+                    // Next, we look at all remaining elements.
+                    Debug.Assert(array is ValueAtom<T>[]);
+                    ValueAtom<T>[] items = Unsafe.As<ValueAtom<T>[]>(array);
+                    ref ValueAtom<T> current = ref Utils.GetArrayDataReference(items);
+                    ref ValueAtom<T> end = ref Unsafe.Add(ref current, items.Length);
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        // Note that intitial read are optimistically not synchronized. This is intentional.
+                        // We will interlock only when we have a candidate.
+                        // In a worst case we may miss some recently returned objects.
+                        if (current.NotSynchronizedHasValue && current.TryPopValue(out value))
+                            break;
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
+
+                    // Next, we look at the reserve if it has elements.
+                    value = reserveCount > 0 ? this.FillFromReserve<T, ValueAtom<T>>() : factory();
+                }
+                return value;
+            }
+            else
+#endif
+            {
+                if (!firstElementNotAtomic.NotSynchronizedHasValue || firstElementNotAtomic.TryPopValue(out T value))
+                {
+                    // Next, we look at all remaining elements.
+                    Debug.Assert(array is ValueMutex<T>[]);
+                    ValueMutex<T>[] items = Unsafe.As<ValueMutex<T>[]>(array);
+                    ref ValueMutex<T> current = ref Utils.GetArrayDataReference(items);
+                    ref ValueMutex<T> end = ref Unsafe.Add(ref current, items.Length);
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        // Note that intitial read are optimistically not synchronized. This is intentional.
+                        // We will interlock only when we have a candidate.
+                        // In a worst case we may miss some recently returned objects.
+                        if (current.NotSynchronizedHasValue && current.TryPopValue(out value))
+                            break;
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
+
+                    // Next, we look at the reserve if it has elements.
+                    value = reserveCount > 0 ? this.FillFromReserve<T, ValueMutex<T>>() : factory();
+                }
+                return value;
+            }
+        }
+        else
+        {
+            T? element = firstElementNotAtomic.NotSynchronizedValue;
+            if (element is null || (object)element != Interlocked.CompareExchange(ref Unsafe.As<T?, object?>(ref firstElementNotAtomic.NotSynchronizedValue), null, element))
+            {
+                // Next, we look at all remaining elements.
+                Debug.Assert(array is ObjectWrapper[]);
+                ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+                ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
+                {
+                    // Note that intitial read are optimistically not synchronized. This is intentional.
+                    // We will interlock only when we have a candidate.
+                    // In a worst case we may miss some recently returned objects.
+                    Debug.Assert(current.Value is null or T);
+                    element = Unsafe.As<object?, T?>(ref current.Value);
+                    if (element is not null && (object)element == Interlocked.CompareExchange(ref current.Value, null, element))
+                        break;
+                    current = ref Unsafe.Add(ref current, 1);
+                }
+
+                // Next, we look at the reserve if it has elements.
+                element = reserveCount > 0 ? this.FillFromReserve() : factory();
             }
 
-            // Next, we look at the reserve if it has elements.
-            element = reserveCount > 0 ? FillFromReserve() : factory();
+            return element;
         }
-
-        return element;
     }
 
     /// <summary>
@@ -230,20 +366,67 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
         // First, we examine the first element.
         // Then do interlocking.
-        if (firstElement is not null || Interlocked.CompareExchange(ref firstElement, element, null) is not null)
+        if (typeof(T).IsValueType)
         {
-            ObjectWrapper[] items = array;
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
-            while (Unsafe.IsAddressLessThan(ref current, ref end))
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
             {
-                // Intentionally we first check if there is an element to avoid unecessary locking.
-                if (current.Value is null && Interlocked.CompareExchange(ref current.Value, element, null) is null)
-                    return;
-                current = ref Unsafe.Add(ref current, 1);
-            }
+                if (firstElementAtomic.NotSynchronizedHasValue || !firstElementAtomic.TrySetValue(ref element))
+                {
+                    Debug.Assert(array is ValueAtom<T>[]);
+                    ValueAtom<T>[] items = Unsafe.As<ValueAtom<T>[]>(array);
+                    ref ValueAtom<T> current = ref Utils.GetArrayDataReference(items);
+                    ref ValueAtom<T> end = ref Unsafe.Add(ref current, items.Length);
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        // Intentionally we first check if there is an element to avoid unecessary locking.
+                        if (!current.NotSynchronizedHasValue && current.TrySetValue(ref element))
+                            return;
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
 
-            SendToReserve(element);
+                    this.SendToReserve<T, ValueAtom<T>>(element);
+                }
+            }
+            else
+#endif
+            {
+                if (firstElementNotAtomic.NotSynchronizedHasValue || !firstElementNotAtomic.TrySetValue(ref element))
+                {
+                    Debug.Assert(array is ValueMutex<T>[]);
+                    ValueMutex<T>[] items = Unsafe.As<ValueMutex<T>[]>(array);
+                    ref ValueMutex<T> current = ref Utils.GetArrayDataReference(items);
+                    ref ValueMutex<T> end = ref Unsafe.Add(ref current, items.Length);
+                    while (Unsafe.IsAddressLessThan(ref current, ref end))
+                    {
+                        // Intentionally we first check if there is an element to avoid unecessary locking.
+                        if (!current.NotSynchronizedHasValue && current.TrySetValue(ref element))
+                            return;
+                        current = ref Unsafe.Add(ref current, 1);
+                    }
+
+                    this.SendToReserve<T, ValueMutex<T>>(element);
+                }
+            }
+        }
+        else
+        {
+            if (firstElementNotAtomic.NotSynchronizedValue is not null || Interlocked.CompareExchange(ref Unsafe.As<T?, object?>(ref firstElementNotAtomic.NotSynchronizedValue), element, null) is not null)
+            {
+                Debug.Assert(array is ObjectWrapper[]);
+                ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+                ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
+                ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
+                while (Unsafe.IsAddressLessThan(ref current, ref end))
+                {
+                    // Intentionally we first check if there is an element to avoid unecessary locking.
+                    if (current.Value is null && Interlocked.CompareExchange(ref current.Value, element, null) is null)
+                        return;
+                    current = ref Unsafe.Add(ref current, 1);
+                }
+
+                this.SendToReserve(element);
+            }
         }
     }
 
@@ -266,10 +449,24 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
 
         int currentMilliseconds = Environment.TickCount;
 
-        firstElement = null; // We always trim the first element.
-
-        ObjectWrapper[] items = array;
-        int length = items.Length;
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+        if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            // Reinterpret into an atomic value.
+            if (IntPtr.Size == sizeof(long))
+            {
+                Unsafe.As<ValueAtom<T>, long>(ref firstElementAtomic) = default;
+            }
+            else
+            {
+                Interlocked.Exchange(ref Unsafe.As<ValueAtom<T>, long>(ref firstElementAtomic), default);
+            }
+        }
+        else
+#endif
+        {
+            firstElementNotAtomic.Clear(); // We always trim the first element.
+        }
 
         int arrayTrimMilliseconds;
         int arrayTrimCount;
@@ -278,7 +475,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         if (force)
         {
             // Forces to clear everything regardless of time.
-            arrayTrimCount = length;
+            arrayTrimCount = GetArrayLenght();
             arrayTrimMilliseconds = 0;
             reserveTrimMilliseconds = 0;
             reserveTrimPercentage = 1;
@@ -288,9 +485,9 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             switch (Utils.GetMemoryPressure())
             {
                 case Utils.MemoryPressure.High:
-                    arrayTrimCount = length;
-                    arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                     // Forces to clear everything regardless of time.
+                    arrayTrimCount = GetArrayLenght();
+                    arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                     reserveTrimMilliseconds = 0;
                     reserveTrimPercentage = 1;
                     break;
@@ -318,13 +515,46 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             // We've elapsed enough time since the last clean.
             // Drop the top items so they can be collected and make the pool look a little newer.
 
-            bool complete = disposeMode switch
+            bool complete;
+            if (typeof(T).IsValueType)
             {
-                Disposing<T>.IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.CallDisposeReference(), items, arrayTrimCount),
-                Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE => FreeHelper.ClearPool(new FreeHelper.TryCallDisposeReference(), items, arrayTrimCount),
-                Disposing<T>.HAS_CUSTOM_DISPOSING => FreeHelper.ClearPool(new FreeHelper.CustomFreeReference<T>(freeCallback!), items, arrayTrimCount),
-                _ => FreeHelper.ClearPool(items, arrayTrimCount),
-            };
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+                if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                {
+                    Debug.Assert(array is ValueAtom<T>[]);
+                    ValueAtom<T>[] items = Unsafe.As<ValueAtom<T>[]>(array);
+                    complete = disposeMode switch
+                    {
+                        Disposing<T>.IMPLEMENT_IDISPOSABLE => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CallDisposePoolValue<T>(), items, arrayTrimCount),
+                        Disposing<T>.HAS_CUSTOM_DISPOSING => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CustomFreeValue<T>(freeCallback!), items, arrayTrimCount),
+                        _ => ObjectPoolHelper.ClearPool<T, ValueAtom<T>>(items, arrayTrimCount),
+                    };
+                }
+                else
+#endif
+                {
+                    Debug.Assert(array is ValueMutex<T>[]);
+                    ValueMutex<T>[] items = Unsafe.As<ValueMutex<T>[]>(array);
+                    complete = disposeMode switch
+                    {
+                        Disposing<T>.IMPLEMENT_IDISPOSABLE => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CallDisposePoolValue<T>(), items, arrayTrimCount),
+                        Disposing<T>.HAS_CUSTOM_DISPOSING => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CustomFreeValue<T>(freeCallback!), items, arrayTrimCount),
+                        _ => ObjectPoolHelper.ClearPool<T, ValueMutex<T>>(items, arrayTrimCount),
+                    };
+                }
+            }
+            else
+            {
+                Debug.Assert(array is ObjectWrapper[]);
+                ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+                complete = disposeMode switch
+                {
+                    Disposing<T>.IMPLEMENT_IDISPOSABLE => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CallDisposeReference(), items, arrayTrimCount),
+                    Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.TryCallDisposeReference(), items, arrayTrimCount),
+                    Disposing<T>.HAS_CUSTOM_DISPOSING => ObjectPoolHelper.ClearPool(new ObjectPoolHelper.CustomFreeReference<T>(freeCallback!), items, arrayTrimCount),
+                    _ => ObjectPoolHelper.ClearPool(items, arrayTrimCount),
+                };
+            }
 
             if (complete)
                 arrayMillisecondsTimeStamp = arrayMillisecondsTimeStamp_ + arrayMillisecondsTimeStamp_ / 4; // Give the remaining items a bit more time.
@@ -332,11 +562,11 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 arrayMillisecondsTimeStamp = 0;
         }
 
-        int oldReserveCount = reserveCount;
         int newReserveCount;
         int newReserveLength;
-        int itemsLength = items.Length;
-        ObjectWrapper[] reserve_ = Utils.NullExchange(ref reserve);
+        int itemsLength = GetArrayLenght();
+        Array reserve_ = Utils.NullExchange(ref reserve);
+        int oldReserveCount = reserveCount;
         int oldReserveLength = reserve_.Length;
         bool isReserveDynamic = IsReserveDynamic;
         // Under high pressure, we don't wait time to trim, so we remove all objects in reserve.
@@ -366,11 +596,11 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 if (isReserveDynamic && oldReserveLength / newReserveCount >= ReserveShrinkFactorToStart)
                 {
                     Debug.Assert(ReserveShrinkFactorToStart >= ReserveShrinkFactor);
-                    newReserveLength = Math.Min(oldReserveLength / ReserveShrinkFactor, itemsLength);
+                    newReserveLength = Math.Max(oldReserveLength / ReserveShrinkFactor, itemsLength);
                     newReserveLength = Math.Max(newReserveLength, newReserveCount);
                 }
                 else
-                    newReserveLength = oldReserveCount;
+                    newReserveLength = oldReserveLength;
             }
             else
             {
@@ -380,176 +610,86 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         }
 
         newReserveLength = isReserveDynamic ? Math.Max(newReserveLength, Math.Min(oldReserveLength, itemsLength)) : oldReserveLength;
+        Debug.Assert(newReserveLength <= oldReserveLength);
+        Debug.Assert(newReserveLength >= newReserveCount);
 
         if (oldReserveCount > 0)
         {
-            switch (disposeMode)
+            if (typeof(T).IsValueType)
             {
-                case Disposing<T>.IMPLEMENT_IDISPOSABLE:
-                    FreeHelper.ClearReserve(new FreeHelper.CallDisposeReference(), reserve_, oldReserveCount, newReserveCount);
-                    break;
-                case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE:
-                    FreeHelper.ClearReserve(new FreeHelper.TryCallDisposeReference(), reserve_, oldReserveCount, newReserveCount);
-                    break;
-                case Disposing<T>.HAS_CUSTOM_DISPOSING:
-                    FreeHelper.ClearReserve(new FreeHelper.CustomFreeReference<T>(freeCallback!), reserve_, oldReserveCount, newReserveCount);
-                    break;
+                Debug.Assert(reserve_ is T[]);
+                T[] reserve__ = Unsafe.As<T[]>(reserve_);
+                switch (disposeMode)
+                {
+                    case Disposing<T>.IMPLEMENT_IDISPOSABLE:
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CallDisposeReserveValue<T>(), reserve__, oldReserveCount, newReserveCount);
+                        break;
+                    case Disposing<T>.HAS_CUSTOM_DISPOSING:
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CustomFreeValue<T>(freeCallback!), reserve__, oldReserveCount, newReserveCount);
+                        break;
+                }
+            }
+            else
+            {
+                Debug.Assert(reserve_ is ObjectWrapper[]);
+                ObjectWrapper[] reserve__ = Unsafe.As<ObjectWrapper[]>(reserve_);
+                switch (disposeMode)
+                {
+                    case Disposing<T>.IMPLEMENT_IDISPOSABLE:
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CallDisposeReference(), reserve__, oldReserveCount, newReserveCount);
+                        break;
+                    case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE:
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.TryCallDisposeReference(), reserve__, oldReserveCount, newReserveCount);
+                        break;
+                    case Disposing<T>.HAS_CUSTOM_DISPOSING:
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CustomFreeReference<T>(freeCallback!), reserve__, oldReserveCount, newReserveCount);
+                        break;
+                }
             }
             // Clear the array only if we are not gonna replace it with a new one.
-            if (newReserveLength != oldReserveLength)
-                Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+            {
+                if (newReserveLength == oldReserveLength)
+                {
+                    Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+                }
+            }
         }
 
         if (newReserveLength != oldReserveLength)
         {
-            ObjectWrapper[] newReserve = new ObjectWrapper[newReserveLength];
+            Array newReserve = typeof(T).IsValueType ? new T[newReserveLength] : new ObjectWrapper[newReserveLength];
             Array.Copy(reserve_, newReserve, newReserveCount);
-            reserve_ = newReserve;
         }
 
         reserveCount = newReserveCount;
         reserve = reserve_;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private T FillFromReserve()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int GetArrayLenght()
     {
-        ObjectWrapper[] items = array;
-        ObjectWrapper[] reserve_ = Utils.NullExchange(ref reserve);
-
-        int oldCount = reserveCount;
-#if DEBUG
-        int count = oldCount;
-#endif
-        if (oldCount > 0)
+        if (typeof(T).IsValueType)
         {
-#if DEBUG
-            Debug.Assert(--count < reserve_.Length);
-#endif
-            ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
-            ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
-            Debug.Assert(currentReserve.Value is T);
-            T element = Unsafe.As<T>(currentReserve.Value);
-            Debug.Assert(element is not null);
-
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
-            while (Unsafe.IsAddressLessThan(ref current, ref end) && Unsafe.IsAddressGreaterThan(ref currentReserve, ref startReserve))
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
             {
-#if DEBUG
-                Debug.Assert(count > 0);
-#endif
-                // Note that intitial read and write are optimistically not synchronized. This is intentional.
-                // In a worst case we may miss some recently returned objects or accidentally free objects.
-                if (current.Value is null)
-                {
-#if DEBUG
-                    Debug.Assert(--count < reserve_.Length);
-#endif
-                    ref ObjectWrapper newReserve = ref Unsafe.Subtract(ref currentReserve, 1);
-                    if (Interlocked.CompareExchange(ref current.Value, newReserve.Value, null) is null)
-                        currentReserve = ref newReserve;
-                }
-                current = ref Unsafe.Add(ref current, 1);
+                Debug.Assert(array is ValueAtom<T>[]);
+                return Unsafe.As<ValueAtom<T>[]>(array).Length;
             }
-
-            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
-#if DEBUG
-            Debug.Assert(count_ == count);
+            else
 #endif
-            Array.Clear(reserve_, count_, oldCount - count_);
-
-            reserveCount = count_;
-            reserve = reserve_;
-            return element;
+            {
+                Debug.Assert(array is ValueMutex<T>[]);
+                return Unsafe.As<ValueMutex<T>[]>(array).Length;
+            }
         }
         else
         {
-            reserve = reserve_;
-            return factory();
+            Debug.Assert(array is ObjectWrapper[]);
+            return Unsafe.As<ObjectWrapper[]>(array).Length;
         }
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void SendToReserve(T obj)
-    {
-        if (obj is null) return;
-
-        ObjectWrapper[] items = array;
-        ObjectWrapper[] reserve_ = Utils.NullExchange(ref reserve);
-
-        int reserveCount_ = reserveCount;
-#if DEBUG
-        int count = reserveCount_;
-#endif
-        if (reserveCount_ + 1 + (items.Length / 2) > reserve_.Length)
-        {
-            if (IsReserveDynamic)
-                Array.Resize(ref reserve_, Math.Max(reserve_.Length * 2, 1));
-            else if (reserveCount_ + 1 == reserve_.Length)
-            {
-                switch (disposeMode)
-                {
-                    case Disposing<T>.IMPLEMENT_IDISPOSABLE:
-                        Unsafe.As<IDisposable>(obj).Dispose();
-                        break;
-                    case Disposing<T>.MAY_IMPLEMENT_IDISPOSABLE when obj is IDisposable disposable:
-                        disposable.Dispose();
-                        break;
-                    case Disposing<T>.HAS_CUSTOM_DISPOSING:
-                        Action<T>? freeCallback_ = freeCallback;
-                        Debug.Assert(freeCallback_ is not null);
-                        freeCallback_(Unsafe.As<T>(obj));
-                        break;
-                }
-                reserve = reserve_;
-                return;
-            }
-        }
-
-        ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
-        ref ObjectWrapper endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
-
-#if DEBUG
-        Debug.Assert(count++ < reserve_.Length);
-#endif
-        Debug.Assert(reserveCount_ < reserve_.Length);
-        ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, reserveCount_);
-        currentReserve.Value = obj;
-        currentReserve = ref Unsafe.Add(ref currentReserve, 1);
-        if (!Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
-        {
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
-
-            while (Unsafe.IsAddressLessThan(ref current, ref end))
-            {
-                // We don't use an optimistically not synchronized initial read in this part.
-                // This is because we expect the majority of the array to be filled.
-                // So it's not worth doing an initial read to check that.
-                object? element_ = Interlocked.Exchange(ref current.Value, null);
-                Debug.Assert(element_ is null or T);
-                T? element = Unsafe.As<T?>(element_);
-                if (element is not null)
-                {
-#if DEBUG
-                    Debug.Assert(count++ < reserve_.Length);
-#endif
-                    currentReserve = ref Unsafe.Add(ref currentReserve, 1);
-                    currentReserve.Value = element;
-                    if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
-                        break;
-                }
-                current = ref Unsafe.Add(ref current, 1);
-            }
-        }
-
-        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
-#if DEBUG
-        Debug.Assert(count_ == count);
-#endif
-
-        reserveCount = count_;
-        reserve = reserve_;
     }
 }
