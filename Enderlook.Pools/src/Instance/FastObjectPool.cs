@@ -378,56 +378,54 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         ObjectWrapper[] items = array;
         ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
 
-        int oldCount = reserveCount;
-#if DEBUG
-        int count = oldCount;
-#endif
-        if (oldCount > 0)
+        int reserveCount_ = reserveCount;
+        if (reserveCount_ > 0)
         {
-#if DEBUG
-            Debug.Assert(--count < reserve_.Length);
-#endif
-            ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
-            ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, oldCount - 1);
-            Debug.Assert(currentReserve.Value is T);
-            T element = Unsafe.As<T>(currentReserve.Value);
-            Debug.Assert(element is not null);
+            int oldReserveCount = reserveCount_;
 
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
-            while (Unsafe.IsAddressLessThan(ref current, ref end) && Unsafe.IsAddressGreaterThan(ref currentReserve, ref startReserve))
-            {
+            ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
+            ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, reserveCount_ - 1);
+
 #if DEBUG
-                Debug.Assert(count > 0);
+            int i = 1;
 #endif
+
+            object value = currentReserve.Value!;
+            Debug.Assert(value is not null);
+            currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
+            Debug.Assert(--reserveCount_ >= 0);
+
+            ref ObjectWrapper currentItem = ref Utils.GetArrayDataReference(items);
+            ref ObjectWrapper endItem = ref Unsafe.Add(ref currentItem, Math.Min(oldReserveCount - 1, items.Length / 2));
+            while (Unsafe.IsAddressLessThan(ref currentItem, ref endItem))
+            {
                 // Note that intitial read and write are optimistically not synchronized. This is intentional.
                 // In a worst case we may miss some recently returned objects or accidentally free objects.
-                if (current.Value is null)
+                if (currentItem.Value is null)
                 {
 #if DEBUG
-                    Debug.Assert(--count < reserve_.Length);
+                    i++;
 #endif
                     currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
-                    current.Value = currentReserve.Value;
+                    Debug.Assert(--reserveCount_ >= 0);
                 }
-                current = ref Unsafe.Add(ref current, 1);
+                currentItem = ref Unsafe.Add(ref currentItem, 1);
             }
 
-            int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
+            int newReserveCount = (int)((long)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>()) + 1;
+            Debug.Assert(newReserveCount == reserveCount_);
 #if DEBUG
-            Debug.Assert(count_ == count);
+            Debug.Assert(i == oldReserveCount - newReserveCount);
 #endif
-            Array.Clear(reserve_, count_, oldCount - count_);
+            Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+            reserveCount = newReserveCount;
+            reserve = reserve_;
+            Debug.Assert(value is T);
+            return Unsafe.As<T>(value);
+        }
 
-            reserveCount = count_;
-            reserve = reserve_;
-            return element;
-        }
-        else
-        {
-            reserve = reserve_;
-            return factory();
-        }
+        reserve = reserve_;
+        return factory();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -438,64 +436,22 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         ObjectWrapper[] items = array;
         ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
 
-        int reserveCount_ = reserveCount;
-#if DEBUG
-        int count = reserveCount_;
-#endif
-        if (reserveCount_ + 1 + (items.Length / 2) > reserve_.Length)
+        int currentReserveCount = reserveCount;
+        int newCount = currentReserveCount + 1 + (items.Length / 2);
+        if (newCount > reserve_.Length)
         {
             if (IsReserveDynamic)
-                Array.Resize(ref reserve_, Math.Max(reserve_.Length * 2, 1));
-            else if (reserveCount_ + 1 == reserve_.Length)
+                Array.Resize(ref reserve_, Math.Max(newCount, Math.Max(reserve_.Length * 2, 1)));
+            else if (currentReserveCount + 1 == reserve_.Length)
             {
                 reserve = reserve_;
                 return;
             }
         }
 
-        ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
-        ref ObjectWrapper endReserve = ref Unsafe.Add(ref startReserve, reserve_.Length);
+        int newReserveCount = ObjectPoolHelper.SendToReserve_(obj, items, reserve_, ref reserveCount);
 
-#if DEBUG
-        Debug.Assert(count++ < reserve_.Length);
-#endif
-        Debug.Assert(reserveCount_ < reserve_.Length);
-        ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, reserveCount_);
-        currentReserve.Value = obj;
-        currentReserve = ref Unsafe.Add(ref currentReserve, 1);
-        if (!Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
-        {
-            ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length / 2);
-
-            while (Unsafe.IsAddressLessThan(ref current, ref end))
-            {
-                // We don't use an optimistically not synchronized initial read in this part.
-                // This is because we expect the majority of the array to be filled.
-                // So it's not worth doing an initial read to check that.
-                object? element_ = Interlocked.Exchange(ref current.Value, null);
-                Debug.Assert(element_ is null or T);
-                T? element = Unsafe.As<T?>(element_);
-                if (element is not null)
-                {
-#if DEBUG
-                    Debug.Assert(count++ < reserve_.Length);
-#endif
-                    currentReserve = ref Unsafe.Add(ref currentReserve, 1);
-                    currentReserve.Value = element;
-                    if (Unsafe.IsAddressLessThan(ref currentReserve, ref endReserve))
-                        break;
-                }
-                current = ref Unsafe.Add(ref current, 1);
-            }
-        }
-
-        int count_ = (int)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>();
-#if DEBUG
-        Debug.Assert(count_ == count);
-#endif
-
-        reserveCount = count_;
+        reserveCount = newReserveCount;
         reserve = reserve_;
     }
 }

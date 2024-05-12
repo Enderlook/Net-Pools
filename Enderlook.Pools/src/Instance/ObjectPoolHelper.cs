@@ -151,7 +151,8 @@ internal static class ObjectPoolHelper
             while (Unsafe.IsAddressLessThan(ref currentItem, ref endItem))
             {
                 // Note that intitial read and write are optimistically not synchronized. This is intentional.
-                // In a worst case we may miss some recently returned objects or accidentally free objects.
+                // In a worst case we may miss some recently returned objects.
+                // But we never accidentally free.
                 if (!currentItem.NotSynchronizedHasValue)
                 {
                     if (currentItem.TrySetValue(ref currentReserve))
@@ -202,11 +203,9 @@ internal static class ObjectPoolHelper
             Debug.Assert(element is T);
             return Unsafe.As<object, T>(ref element);
         }
-        else
-        {
-            self.reserve = reserve;
-            return self.factory();
-        }
+
+        self.reserve = reserve;
+        return self.factory();
     }
 
     private static object FillFromReserve_(ObjectWrapper[] items, ObjectWrapper[] reserve, ref int reserveCount)
@@ -231,7 +230,8 @@ internal static class ObjectPoolHelper
         while (Unsafe.IsAddressLessThan(ref currentItem, ref endItem))
         {
             // Note that intitial read and write are optimistically not synchronized. This is intentional.
-            // In a worst case we may miss some recently returned objects or accidentally free objects.
+            // In a worst case we may miss some recently returned objects.
+            // But we never accidentally free, this is why we use CompareExchange to check for null.
             if (currentItem.Value is null)
             {
                 if (Interlocked.CompareExchange(ref currentItem.Value, currentReserve.Value, null) is null)
