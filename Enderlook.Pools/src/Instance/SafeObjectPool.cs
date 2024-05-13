@@ -298,7 +298,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     }
 
                     // Next, we look at the reserve if it has elements.
-                    value = reserveCount > 0 ? this.FillFromReserve<T, ValueAtom<T>>() : factory();
+                    value = reserveCount > 0 ? this.FillFromReserveValue<T, ValueAtom<T>>() : factory();
                 }
                 return value;
             }
@@ -323,7 +323,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     }
 
                     // Next, we look at the reserve if it has elements.
-                    value = reserveCount > 0 ? this.FillFromReserve<T, ValueMutex<T>>() : factory();
+                    value = reserveCount > 0 ? this.FillFromReserveValue<T, ValueMutex<T>>() : factory();
                 }
                 return value;
             }
@@ -351,7 +351,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 }
 
                 // Next, we look at the reserve if it has elements.
-                element = reserveCount > 0 ? this.FillFromReserve() : factory();
+                element = reserveCount > 0 ? this.FillFromReserveReference() : factory();
             }
 
             return element;
@@ -385,7 +385,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                         current = ref Unsafe.Add(ref current, 1);
                     }
 
-                    this.SendToReserve<T, ValueAtom<T>>(element);
+                    this.SendToReserveValue<T, ValueAtom<T>>(element);
                 }
             }
             else
@@ -405,7 +405,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                         current = ref Unsafe.Add(ref current, 1);
                     }
 
-                    this.SendToReserve<T, ValueMutex<T>>(element);
+                    this.SendToReserveValue<T, ValueMutex<T>>(element);
                 }
             }
         }
@@ -425,7 +425,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     current = ref Unsafe.Add(ref current, 1);
                 }
 
-                this.SendToReserve(element);
+                this.SendToReserveReference(element);
             }
         }
     }
@@ -622,7 +622,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 switch (disposeMode)
                 {
                     case Disposing<T>.IMPLEMENT_IDISPOSABLE:
-                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CallDisposeReserveValue<T>(), reserve__, oldReserveCount, newReserveCount);
+                        ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CallDisposePoolValue<T>(), reserve__, oldReserveCount, newReserveCount);
                         break;
                     case Disposing<T>.HAS_CUSTOM_DISPOSING:
                         ObjectPoolHelper.ClearReserve(new ObjectPoolHelper.CustomFreeValue<T>(freeCallback!), reserve__, oldReserveCount, newReserveCount);
