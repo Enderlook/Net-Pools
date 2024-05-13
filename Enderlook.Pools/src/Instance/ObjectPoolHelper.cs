@@ -122,7 +122,7 @@ internal static class ObjectPoolHelper
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T FillFromReserve<T, U>(this SafeObjectPool<T> self)
+    public static T FillFromReserveValue<T, U>(this SafeObjectPool<T> self)
         where U : IValueWrapper<T>
     {
         Debug.Assert(self.array is U[]);
@@ -186,7 +186,7 @@ internal static class ObjectPoolHelper
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T FillFromReserve<T>(this SafeObjectPool<T> self)
+    public static T FillFromReserveReference<T>(this SafeObjectPool<T> self)
     {
         Debug.Assert(self.array is ObjectWrapper[]);
         ObjectWrapper[] items_ = Unsafe.As<ObjectWrapper[]>(self.array);
@@ -258,7 +258,7 @@ internal static class ObjectPoolHelper
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SendToReserve<T, U>(this SafeObjectPool<T> self, T obj)
+    public static void SendToReserveValue<T, U>(this SafeObjectPool<T> self, T obj)
         where U : IValueWrapper<T>
     {
         Debug.Assert(self.array is U[]);
@@ -323,7 +323,7 @@ internal static class ObjectPoolHelper
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SendToReserve<T>(this SafeObjectPool<T> self, T obj)
+    public static void SendToReserveReference<T>(this SafeObjectPool<T> self, T obj)
     {
         if (obj is null) return;
 
@@ -432,11 +432,17 @@ internal static class ObjectPoolHelper
         }
     }
 
-    public struct CallDisposePoolValue<T> : IFreePool<ValueMutex<T>>, IFreePool<ValueAtom<T>>
+    public struct CallDisposePoolValue<T> : IFreePool<ValueMutex<T>>, IFreeReserve<T>
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+        , IFreePool<ValueAtom<T>>
+#endif
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryFree(ref ValueMutex<T> value)
         {
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            Debug.Assert(!(Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>()));
+#endif
             if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
             {
                 ((IDisposable)element).Dispose();
@@ -445,9 +451,11 @@ internal static class ObjectPoolHelper
             return false;
         }
 
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryFree(ref ValueAtom<T> value)
         {
+            Debug.Assert(Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>());
             if (value.NotSynchronizedHasValue && value.TryPopValue(out T element))
             {
                 ((IDisposable)element).Dispose();
@@ -455,10 +463,8 @@ internal static class ObjectPoolHelper
             }
             return false;
         }
-    }
+#endif
 
-    public struct CallDisposeReserveValue<T> : IFreeReserve<T>
-    {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Free(ref T value)
         {
@@ -523,7 +529,10 @@ internal static class ObjectPoolHelper
         }
     }
 
-    public struct CustomFreeValue<T> : IFreePool<ValueMutex<T>>, IFreePool<ValueAtom<T>>, IFreeReserve<T>
+    public struct CustomFreeValue<T> : IFreePool<ValueMutex<T>>, IFreeReserve<T>
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+        , IFreePool<ValueAtom<T>>
+#endif
     {
         private readonly Action<T> action;
 
@@ -548,6 +557,7 @@ internal static class ObjectPoolHelper
             return false;
         }
 
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryFree(ref ValueAtom<T> value)
         {
@@ -558,5 +568,6 @@ internal static class ObjectPoolHelper
             }
             return false;
         }
+#endif
     }
 }

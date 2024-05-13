@@ -5,6 +5,7 @@ using System.Threading;
 
 namespace Enderlook.Pools;
 
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
 [StructLayout(LayoutKind.Sequential, Size = 8)]
 [method: MethodImpl(MethodImplOptions.AggressiveInlining)]
 internal struct ValueAtom<T>(T value) : IValueWrapper<T>
@@ -40,3 +41,4 @@ internal struct ValueAtom<T>(T value) : IValueWrapper<T>
         return Interlocked.CompareExchange(ref Unsafe.As<ValueAtom<T>, long>(ref this), Unsafe.As<ValueAtom<T>, long>(ref atom), default) == default;
     }
 }
+#endif
