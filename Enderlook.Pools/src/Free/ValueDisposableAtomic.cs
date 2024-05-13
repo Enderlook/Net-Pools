@@ -1,4 +1,5 @@
-﻿using System;
+﻿#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -93,3 +94,4 @@ internal struct ValueDisposableAtomic<TElement> : ISharedPoolHelperValue
         }
     }
 }
+#endif
