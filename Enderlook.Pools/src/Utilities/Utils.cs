@@ -73,7 +73,7 @@ internal static class Utils
         while (true)
         {
             current = Interlocked.Exchange(ref slot, LOCKED);
-            if (current != -1)
+            if (current != LOCKED)
                 break;
             spinWait.SpinOnce();
         }
@@ -88,7 +88,7 @@ internal static class Utils
         while (true)
         {
             current = Volatile.Read(ref slot);
-            if (current != -1)
+            if (current != LOCKED)
                 break;
             spinWait.SpinOnce();
         }
