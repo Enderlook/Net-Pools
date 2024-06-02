@@ -79,6 +79,6 @@ T>
                 Shared = new SharedReferencePool<T, ReferenceMayBeDisposable>();
             }
         }
-        GCCallback<T> _ = new(Shared);
+        GCCallbackObject<T> _ = new(Shared);
     }
 }

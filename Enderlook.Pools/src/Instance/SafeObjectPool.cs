@@ -194,7 +194,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             reserve = new ObjectWrapper[capacity];
             array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         }
-        GCCallback<T> _ = new(this);
+        GCCallbackObject<T> _ = new(this);
     }
 
     /// <summary>
