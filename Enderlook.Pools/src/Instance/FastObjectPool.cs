@@ -113,7 +113,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         int capacity = Environment.ProcessorCount * 2;
         array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         reserve = new ObjectWrapper[capacity];
-        GCCallback<T> _ = new(this);
+        GCCallbackObject<T> _ = new(this);
     }
 
     /// <summary>

@@ -5,22 +5,20 @@ using System.Runtime.InteropServices;
 
 namespace Enderlook.Pools;
 
-internal sealed class GCCallback<T>
+internal sealed class GCCallbackObject<T>(ObjectPool<T> owner)
 {
-    private readonly GCHandle owner;
+    private readonly GCHandle owner = GCHandle.Alloc(owner, GCHandleType.Weak);
 
-    public GCCallback(ObjectPool<T> owner) => this.owner = GCHandle.Alloc(owner, GCHandleType.Weak);
-
-    ~GCCallback()
+    ~GCCallbackObject()
     {
         object? owner = this.owner.Target;
         if (owner is null)
             this.owner.Free();
         else
         {
+            GC.ReRegisterForFinalize(this);
             Debug.Assert(owner is ObjectPool<T>);
             Unsafe.As<ObjectPool<T>>(owner).Trim();
-            GC.ReRegisterForFinalize(this);
         }
     }
 }
