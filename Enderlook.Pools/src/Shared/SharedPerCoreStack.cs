@@ -1,10 +1,14 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Enderlook.Pools;
 
 internal struct SharedPerCoreStack
 {
+    public object o = new();
+
     public readonly Array Array;
     public int Count;
     public int MillisecondsTimeStamp;
@@ -32,6 +36,32 @@ internal struct SharedPerCoreStack
         return count;
     }
 
+    public static void AssertHasNot<T>(SharedPerCoreStack[] array, T element, int ignore)
+    {
+        return;
+        ref SharedPerCoreStack current = ref Utils.GetArrayDataReference(array);
+        ref SharedPerCoreStack end = ref Unsafe.Add(ref current, array.Length);
+        int i = 0;
+        while (Unsafe.IsAddressLessThan(ref current, ref end))
+        {
+            if (ignore == i++)
+                continue;
+
+            int count = Utils.MinusOneExchange(ref current.Count);
+            Span<T> a = ((T[])current.Array).AsSpan(0, count);
+            ref T b = ref MemoryMarshal.GetReference(a);
+            ref T c = ref Unsafe.Add(ref b, count);
+            while (Unsafe.IsAddressLessThan(ref b, ref c))
+            {
+                Debug.Assert(!b.Equals(element));
+                b = ref Unsafe.Add(ref b, 1);
+            }
+
+            current.Count = count;
+            current = ref Unsafe.Add(ref current, 1);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int StartTrim(int currentMilliseconds, int trimMilliseconds, int trimCount, out int oldCount, out int newCount)
     {
@@ -39,7 +69,7 @@ internal struct SharedPerCoreStack
         if (Count == 0)
         {
             result = 0;
-            goto end1;
+            goto end;
         }
 
         int oldCount_ = oldCount = Utils.MinusOneExchange(ref Count);
@@ -52,8 +82,7 @@ internal struct SharedPerCoreStack
         int millisecondsTimeStamp = MillisecondsTimeStamp;
         if (millisecondsTimeStamp == 0)
         {
-            millisecondsTimeStamp = currentMilliseconds;
-            MillisecondsTimeStamp = millisecondsTimeStamp;
+            MillisecondsTimeStamp = millisecondsTimeStamp = currentMilliseconds;
             result = 1;
             goto end2;
         }
@@ -75,8 +104,12 @@ internal struct SharedPerCoreStack
 
         return 2;
 
-    end1:
+    end:
+#if NET5_0_OR_GREATER
+        Unsafe.SkipInit(out oldCount);
+#else
         oldCount = 0;
+#endif
     end2:
 #if NET5_0_OR_GREATER
         Unsafe.SkipInit(out newCount);

@@ -97,22 +97,65 @@ internal readonly struct SharedTrimInfo
         ref SharedPerCoreStack end = ref Unsafe.Add(ref current, array.Length);
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
-            switch (current.StartTrim(currentMilliseconds, trimMilliseconds, trimCount, out int oldCount, out int newCount))
+            //lock (current.o)
             {
-                case 2:
+                if (current.Count == 0)
+                {
+                    goto continue_;
+                }
+
+                int count = Utils.MinusOneExchange(ref current.Count);
+
+                int millisecondsTrimStamp = current.MillisecondsTimeStamp;
+                if (millisecondsTrimStamp == 0)
+                {
+                    current.MillisecondsTimeStamp = millisecondsTrimStamp = currentMilliseconds;
+                    goto setCount;
+                }
+
+                if ((currentMilliseconds - millisecondsTrimStamp) <= trimMilliseconds)
+                {
+                    goto setCount;
+                }
+
+                // We've elapsed enough time since the first item went into the stack.
+                // Drop the top item so it can be collected and make the stack look a little newer.
+
+                int oldCount = count;
+                count = Math.Max(oldCount - trimCount, 0);
+                if (count != oldCount)
+                {
 #if NET7_0_OR_GREATER
                     THelper
 #else
                     new THelper()
 #endif
-                        .Free(current.Array, newCount, oldCount, false);
-                    oldCount = newCount;
-                    goto case 1;
-                case 1:
-                    current.Count = oldCount;
-                    break;
+                        .Free(current.Array, count, oldCount, false);
+                }
+
+            setCount:
+                current.Count = count;
+
+
+                /*switch (current.StartTrim(currentMilliseconds, trimMilliseconds, trimCount, out int oldCount, out int newCount))
+                {
+                    case 2:
+#if NET7_0_OR_GREATER
+                        THelper
+#else
+                        new THelper()
+#endif
+                            .Free(current.Array, newCount, oldCount, false);
+                        oldCount = newCount;
+                        goto case 1;
+                    case 1:
+                        current.Count = oldCount;
+                        break;
+                }*/
+
+            continue_:
+                current = ref Unsafe.Add(ref current, 1);
             }
-            current = ref Unsafe.Add(ref current, 1);
         }
     }
 

@@ -1,10 +1,13 @@
 ﻿using Enderlook.Pools.Free;
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Xml.Linq;
 
 namespace Enderlook.Pools;
 
@@ -14,6 +17,8 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
         , new()
 #endif
 {
+    private List<string> q = new();
+
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
@@ -35,7 +40,7 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
     public override TElement Rent()
     {
-        SharedThreadLocalElement? threadLocalElement = SharedPool<TElement, ObjectWrapper>.ThreadLocalElement;
+        /*SharedThreadLocalElement? threadLocalElement = SharedPool<TElement, ObjectWrapper>.ThreadLocalElement;
         if (threadLocalElement is not null)
         {
             Debug.Assert(threadLocalElement is SharedThreadLocalElementReference);
@@ -52,9 +57,11 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
                 Debug.Assert(value is TElement);
                 return Unsafe.As<object, TElement>(ref value);
             }
-        }
+        }*/
 
         // We don't use a helper method, because calling it (even with aggressive inlining) produces unnecessary code.
+
+        //return ObjectPoolHelper<TElement>.Create();
 
         // Next, try to get an element from one of the per-core stacks.
         SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
@@ -69,9 +76,10 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
             if (Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2))
             {
                 Debug.Assert(element2.Value is TElement);
-                TElement? element3 = Unsafe.As<object?, TElement?>(ref element2.Value);
-                Debug.Assert(element3 is not null);
-                return element3;
+                SharedPerCoreStack.AssertHasNot(perCoreStacks, element2, -1);
+                lock (q)
+                    q.Add($"Remove {index}");
+                return Unsafe.As<object?, TElement>(ref element2.Value);
             }
 
             if (++index == perCoreStacks.Length)
@@ -83,6 +91,8 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
 
         static TElement SlowPath()
         {
+            return ObjectPoolHelper<TElement>.Create();
+
             int count = SharedPool<TElement, ObjectWrapper>.GlobalReserveCount;
             if (count > 0)
             {
@@ -111,7 +121,7 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
         if (element is null) Utils.ThrowArgumentNullException_Element();
         Debug.Assert(element is not null);
 
-        // Store the element into the thread local field.
+       /* // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
         SharedThreadLocalElement? threadLocalElement = SharedPool<TElement, ObjectWrapper>.ThreadLocalElement;
@@ -126,30 +136,38 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
             .Exchange(threadLocalElement_, element);
         threadLocalElement_.MillisecondsTimeStamp = 0;
         if (old is null)
-            return;
+            return;*/
+
+        object? old = element;
 
         // Try to store the object from one of the per-core stacks.
         // We don't use a helper method, because calling it (even with aggressive inlining) produced an additional branching.
-        SharedPerCoreStack[] perCoreStacks_ = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
-        ref SharedPerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+        SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
+
+        SharedPerCoreStack.AssertHasNot(perCoreStacks, new ObjectWrapper(element), -1);
+
+        ref SharedPerCoreStack perCoreStacksRoot = ref Utils.GetArrayDataReference(perCoreStacks);
         // Try to push from the associated stack first.
         // If that fails, try with other stacks.
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-        int currentProcessorId = Thread.GetCurrentProcessorId();
-#else
-        int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
-#endif
-        int index = (int)((uint)currentProcessorId % (uint)SharedPoolHelpers.PerCoreStacksCount);
-        for (int i = 0; i < perCoreStacks_.Length; i++)
+        int index = SharedPoolHelpers.GetStartingIndex();
+        for (int i = 0; i < perCoreStacks.Length; i++)
         {
-            Debug.Assert(index < perCoreStacks_.Length);
-            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(new ObjectWrapper(element)))
+            Debug.Assert(index < perCoreStacks.Length);
+            SharedPerCoreStack.AssertHasNot(perCoreStacks, new ObjectWrapper(element), index);
+            if (Unsafe.Add(ref perCoreStacksRoot, index).TryPush(new ObjectWrapper(old)))
+            {
+                //SharedPerCoreStack.AssertHasNot(perCoreStacks, new ObjectWrapper(element), index);
+                lock (q)
+                    q.Add($"Add {index}");
                 return;
+            }
+            //SharedPerCoreStack.AssertHasNot(perCoreStacks, new ObjectWrapper(element), index);
 
-            if (++index == perCoreStacks_.Length)
+            if (++index == perCoreStacks.Length)
                 index = 0;
         }
-        SlowPath2(index, element);
+        SharedPerCoreStack.AssertHasNot(perCoreStacks, new ObjectWrapper(element), -1);
+        SlowPath2(index, old);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static SharedThreadLocalElementReference SlowPath()
@@ -176,14 +194,15 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void SlowPath2(int index, TElement element)
+        static void SlowPath2(int index, object obj)
         {
+            return;
             SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
             ref SharedPerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks);
             // Next, transfer a per-core stack to the global reserve.
             Debug.Assert(index < perCoreStacks.Length);
             Unsafe.Add(ref perCoreStacks_Root, index).MoveToGlobalReserve(
-                new ObjectWrapper(element),
+                new ObjectWrapper(obj),
                 ref SharedPool<TElement, ObjectWrapper>.GlobalReserve,
                 ref SharedPool<TElement, ObjectWrapper>.GlobalReserveCount
             );
@@ -195,17 +214,74 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
     {
         SharedTrimInfo info = new(force);
 
-        info.TryTrimThreadLocalElements<THelper>(
+        //HashSet<object> s = new();
+        Dictionary<object, int> s = new();
+
+        /*foreach (var l in (SharedPool<TElement, ObjectWrapper>.AllThreadLocalElements ?? Array.Empty<GCHandle>()).Take(SharedPool<TElement, ObjectWrapper>.AllThreadLocalElementsCount))
+        {
+            var t = l.Target;
+            if (t is not null)
+            {
+                object? v = ((SharedThreadLocalElementReference)t).Value;
+                if (v is not null)
+                    Debug.Assert(s.Add(v));
+            }
+        }*/
+
+        //SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
+        var t = new SharedPerCoreStack[SharedPoolHelpers.PerCoreStacksCount];
+        for (int i = 0; i < t.Length; i++)
+        {
+            t[i] = new(new ObjectWrapper[SharedPoolHelpers.MaxObjectsPerCore]);
+        }
+
+        SharedPerCoreStack[] perCoreStacks = Interlocked.Exchange(ref SharedPool<TElement, ObjectWrapper>.PerCoreStacks, t);
+        /*bool[] taken = new bool[perCoreStacks.Length];
+        for (int i = 0; i < perCoreStacks.Length; i++)
+        {
+            Monitor.Enter(perCoreStacks[i].o, ref taken[i]);
+        }*/
+
+        for (int i = 0; i < perCoreStacks.Length; i++)
+        {
+            ref var l = ref perCoreStacks[i];
+            int k = Utils.MinusOneExchange(ref l.Count);
+            var o = (ObjectWrapper[])l.Array;
+            for (int j = 0; j < k; j++)
+            {
+                object? v = o[j].Value;
+                if (v is not null)
+                {
+                    bool q = s.TryGetValue(v, out var p);
+                    Debug.Assert(s.TryAdd(v, i));
+                    //Return((TElement)v);
+                }
+            }
+            l.Count = k;
+        }
+
+        foreach (var e in s.Keys)
+            Return((TElement)e);
+
+        /*for (int i = 0; i < perCoreStacks.Length; i++)
+        {
+            if (taken[i])
+            {
+                Monitor.Exit(perCoreStacks[i].o);
+            }
+        }*/
+
+        /*info.TryTrimThreadLocalElements<THelper>(
             ref SharedPool<TElement, ObjectWrapper>.AllThreadLocalElements,
             ref SharedPool<TElement, ObjectWrapper>.AllThreadLocalElementsCount
-        );
+        );*/
 
         info.TryTrimPerCoreStacks<THelper>(SharedPool<TElement, ObjectWrapper>.PerCoreStacks);
 
-        info.TryTrimGlobalReserve<THelper>(
+        /*info.TryTrimGlobalReserve<THelper>(
             ref Unsafe.As<ObjectWrapper[]?, Array?>(ref SharedPool<TElement, ObjectWrapper>.GlobalReserve),
             ref SharedPool<TElement, ObjectWrapper>.GlobalReserveCount,
             ref SharedPool<TElement, ObjectWrapper>.GlobalReserveMillisecondsTimeStamp
-        );
+        );*/
     }
 }

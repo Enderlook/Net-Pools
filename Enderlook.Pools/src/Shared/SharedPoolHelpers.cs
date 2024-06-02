@@ -1,9 +1,14 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Enderlook.Pools;
 
@@ -12,12 +17,12 @@ internal static class SharedPoolHelpers
     /// <summary>
     /// Maximum length of `perCoreStacks` to use.
     /// </summary>
-    public const int MaximumPerCoreStack = 64; // Selected to avoid needing to worry about processor groups.
+    public const int MaximumPerCoreStack = 64;//8;//6;//64; // Selected to avoid needing to worry about processor groups.
 
     /// <summary>
     /// The maximum number of objects to store in each per-core stack.
     /// </summary>
-    public const int MaxObjectsPerCore = 128;
+    public const int MaxObjectsPerCore = 128;//12;//128;
 
     /// <summary>
     /// The initial capacity of `globalReserve`.
@@ -119,29 +124,48 @@ internal static class SharedPoolHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryPush<T>(this ref SharedPerCoreStack stack, T element)
     {
+        Debug.Assert(element is not ObjectWrapper e || e.Value is not null);
         Array array = stack.Array;
         Debug.Assert(array is T?[]);
         T?[] items = Unsafe.As<T?[]>(array);
-
-        int count = Utils.MinusOneExchange(ref stack.Count);
-
-        bool enqueued = false;
-        if (unchecked((uint)count < (uint)items.Length))
+        //lock (stack.o)
         {
-            if (count == 0)
+
+            //int count = Utils.MinusOneExchange(ref stack.Count);
+
+            SpinWait spinWait = new();
+            int count;
+            while (true)
             {
-                // Reset the time stamp now that we're transitioning from empty to non-empty.
-                // Trim will see this as 0 and initialize it to the current time when Trim is called.
-                stack.MillisecondsTimeStamp = 0;
+                count = Interlocked.Exchange(ref stack.Count, -1);
+                if (count != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
+            Debug.Assert(count >= 0);
+
+            bool enqueued;
+           // if (enqueued = unchecked((uint)count < (uint)items.Length))
+            if (enqueued = (count < items.Length))
+            {
+                Debug.Assert(count < items.Length);
+                items[count] = element;
+                //Unsafe.Add(ref Utils.GetArrayDataReference(items), count) = element;
+                //Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), count) = element;
+                //Debug.Assert(items[count] is not ObjectWrapper e2 || e2.Value is not null);
+                //Debug.Assert(typeof(T) != typeof(ObjectWrapper) || items.Take(count + 1).All(e => ((ObjectWrapper)(object)e!).Value is not null));
+
+                if (count++ == 0)
+                {
+                    // Reset the time stamp now that we're transitioning from empty to non-empty.
+                    // Trim will see this as 0 and initialize it to the current time when Trim is called.
+                    stack.MillisecondsTimeStamp = 0;
+                }
             }
 
-            Debug.Assert(count < items.Length);
-            Unsafe.Add(ref Utils.GetArrayDataReference(items), count++) = element;
-            enqueued = true;
+            stack.Count = count;
+            return enqueued;
         }
-
-        stack.Count = count;
-        return enqueued;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -149,32 +173,52 @@ internal static class SharedPoolHelpers
     {
         Debug.Assert(stack.Array is T?[]);
         T?[] items = Unsafe.As<T?[]>(stack.Array);
-
-        int count = Utils.MinusOneExchange(ref stack.Count);
-
-        int newCount = count - 1;
-        if (unchecked((uint)newCount < (uint)items.Length))
+        //lock (stack.o)
         {
-            Debug.Assert(newCount < items.Length);
-            ref T? slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
-            Debug.Assert(slot is not null);
-            element = slot;
+            SpinWait spinWait = new();
+            int count;
+            while (true)
+            {
+                count = Interlocked.Exchange(ref stack.Count, -1);
+                if (count != -1)
+                    break;
+                spinWait.SpinOnce();
+            }
+            Debug.Assert(count >= 0);
+
+            //Debug.Assert(typeof(T) != typeof(ObjectWrapper) || items.Take(count).All(e => ((ObjectWrapper)(object)e!).Value is not null));
+
+            int newCount = count - 1;
+            bool extracted;
+            //if (extracted = unchecked((uint)newCount < (uint)items.Length))
+            if (extracted = newCount >= 0)
+            {
+                count = newCount;
+                extracted = true;
+                Debug.Assert(newCount >= 0);
+                Debug.Assert(newCount < items.Length);
+                //ref T? slot = ref Unsafe.Add(ref Utils.GetArrayDataReference(items), newCount);
+                ref T? slot = ref items[newCount];// ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), newCount);
+                Debug.Assert(slot is not null);
+                element = slot;
+                Debug.Assert(element is not ObjectWrapper e || e.Value is not null);
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+                if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
 #endif
-                slot = default;
-            stack.Count = newCount;
-            return true;
-        }
-
+                    slot = default;
+            }
+            else
+            {
 #if NET5_0_OR_GREATER
-        Unsafe.SkipInit(out element);
+                Unsafe.SkipInit(out element);
 #else
-        element = default;
+            element = default;
 #endif
+            }
 
-        stack.Count = count;
-        return false;
+            stack.Count = count;
+            return extracted;
+        }
     }
 
     public static bool FillFromGlobalReserve<T>(this ref SharedPerCoreStack stack, [NotNullWhen(true)] out T? element, ref T?[]? globalReserve, ref int globalReserveCount)
@@ -221,32 +265,35 @@ internal static class SharedPoolHelpers
 
     public static void MoveToGlobalReserve<T>(this ref SharedPerCoreStack stack, T obj, ref T?[]? globalReserve, ref int globalReserveCount)
     {
-        int count_ = Utils.MinusOneExchange(ref stack.Count);
-        T?[] globalReserve_ = Utils.NullExchange(ref globalReserve);
+        int stackCount = Utils.MinusOneExchange(ref stack.Count);
+        T?[] globalReserveArray = Utils.NullExchange(ref globalReserve);
 
         Debug.Assert(stack.Array is T?[]);
         T?[] items = Unsafe.As<T?[]>(stack.Array);
-        int amount = count_ + 1;
+        int amount = stackCount + 1;
         int globalCount = globalReserveCount;
         int newGlobalCount = globalCount + amount;
-        if (unchecked((uint)newGlobalCount >= (uint)globalReserve_.Length))
-            Array.Resize(ref globalReserve_, globalReserve_.Length * 2);
-        Array.Copy(items, 0, globalReserve_, globalCount, count_);
+        if (unchecked((uint)newGlobalCount >= (uint)globalReserveArray.Length))
+            Array.Resize(ref globalReserveArray, globalReserveArray.Length * 2);
+        Array.Copy(items, 0, globalReserveArray, globalCount, stackCount);
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
         if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
 #endif
-#if NET6_0_OR_GREATER
-            Array.Clear(items);
-#else
-            Array.Clear(items, 0, items.Length);
-#endif
-        globalCount += count_;
-        count_ = 0;
-        Debug.Assert(globalCount < globalReserve_.Length);
-        Unsafe.Add(ref Utils.GetArrayDataReference(globalReserve_), globalCount++) = obj;
+            Array.Clear(items, 0, stackCount);
+        globalCount += stackCount;
+        stackCount = 0;
+        Debug.Assert(globalCount < globalReserveArray.Length);
+        Unsafe.Add(ref Utils.GetArrayDataReference(globalReserveArray), globalCount++) = obj;
+        Debug.Assert(globalCount <= globalReserveArray.Length);
+
+        /*HashSet<T> set = new();
+        for (int i = 0; i < globalCount; i++)
+        {
+            Debug.Assert(set.Add(globalReserveArray[i]));
+        }*/
 
         globalReserveCount = globalCount;
-        globalReserve = globalReserve_;
-        stack.Count = count_;
+        globalReserve = globalReserveArray;
+        stack.Count = stackCount;
     }
 }

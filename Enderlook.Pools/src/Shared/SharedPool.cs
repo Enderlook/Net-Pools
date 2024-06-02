@@ -27,7 +27,7 @@ internal struct SharedPool<TElement, TStorage>
     /// An array of per-core objects.<br/>
     /// The slots are lazily initialized.
     /// </summary>
-    public static readonly SharedPerCoreStack[] PerCoreStacks = new SharedPerCoreStack[SharedPoolHelpers.PerCoreStacksCount];
+    public static/* readonly*/ SharedPerCoreStack[] PerCoreStacks = new SharedPerCoreStack[SharedPoolHelpers.PerCoreStacksCount];
 
     /// <summary>
     /// A global dynamic-size reserve of elements.<br/>
