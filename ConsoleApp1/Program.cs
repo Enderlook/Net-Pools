@@ -7,55 +7,51 @@ internal class Z
 {
     public static void Main()
     {
-        /* Stack<UVDA> q = new();
-         for (int j = 0; j < 2; j++)
-         {
-             for (int i = 0; i < 10000; i++)
-                 q.Push(SharedRent2());
-             while (q.TryPop(out var v))
-                 SharedReturn2(v);
-             Thread.Sleep(100);
-         }
-
-         [MethodImpl(MethodImplOptions.NoInlining)]
-         static UVDA SharedRent2() => ObjectPool<UVDA>.Shared.Rent();
-
-         [MethodImpl(MethodImplOptions.NoInlining)]
-         static void SharedReturn2(UVDA t) => ObjectPool<UVDA>.Shared.Return(t);*/
-
-        while (true)
+        /*
+        Stack<UVDA> q = new();
+        for (int j = 0; j < 2; j++)
         {
-            /*SharedTest<UV>();
-            SharedTest<UVDN>();
-            SharedTest<UVDA>();
-            SharedTest<MV>();
-            SharedTest<MVD>();*/
-            //SharedTest<RMD>();
-            SharedTest<RD>();
-            //SharedTest<RNV>();
-
-            Console.WriteLine("Shared End");
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
+            for (int i = 0; i < 10000; i++)
+                q.Push(SharedRent2());
+            while (q.TryPop(out var v))
+                SharedReturn2(v);
+            Thread.Sleep(100);
         }
 
-        return;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static UVDA SharedRent2() => ObjectPool<UVDA>.Shared.Rent();
 
-        /*InstanceTest<UV>();
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void SharedReturn2(UVDA t) => ObjectPool<UVDA>.Shared.Return(t);
+
+        SharedTest<UV>();
+        SharedTest<UVDN>();
+        SharedTest<UVDA>();
+        SharedTest<MV>();
+        SharedTest<MVD>();
+        SharedTest<RMD>();
+        SharedTest<RD>();
+        SharedTest<RNV>();
+
+        Console.WriteLine("Shared End");
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();*/
+
+        InstanceTest<UV>();
         InstanceTest<UVDN>();
         InstanceTest<UVDA>();
         InstanceTest<MV>();
-        InstanceTest<MVD>();*/
+        InstanceTest<MVD>();
         InstanceTest<RMD>();
         InstanceTest<RD>();
         InstanceTest<RNV>();
 
         Console.WriteLine("Instance End");
-
+        /*
         FastObjectPool<object> pool = new();
         For(0, 100, _ =>
         {
@@ -69,46 +65,46 @@ internal class Z
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        Console.WriteLine("Fast End");
+        Console.WriteLine("Fast End");*/
 
         return;
 
-       /* For(0, 100, _ =>
-        {
-            var r = ExactLengthArrayPool<int>.SharedOf(16);
-            Stack<int[]> q = new();
-            for (int i = 0; i < 1000; i++)
-                q.Push(r.Rent());
-            while (q.TryPop(out int[]? v))
-                r.Return(v);
-        });
-        ExactLengthArrayPool<int>.SharedOf(16).Trim(true);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        /* For(0, 100, _ =>
+         {
+             var r = ExactLengthArrayPool<int>.SharedOf(16);
+             Stack<int[]> q = new();
+             for (int i = 0; i < 1000; i++)
+                 q.Push(r.Rent());
+             while (q.TryPop(out int[]? v))
+                 r.Return(v);
+         });
+         ExactLengthArrayPool<int>.SharedOf(16).Trim(true);
+         GC.Collect();
+         GC.WaitForPendingFinalizers();
 
-        For(0, 16, l =>
-        {
-            For(0, 100, _ =>
-            {
-                Stack<int[]> q = new();
-                for (int i = 0; i < 1000; i++)
-                    q.Push(SharedRent3(l));
-                while (q.TryPop(out int[]? v))
-                    SharedReturn3(v);
-            });
-        });
-        Trim();
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+         For(0, 16, l =>
+         {
+             For(0, 100, _ =>
+             {
+                 Stack<int[]> q = new();
+                 for (int i = 0; i < 1000; i++)
+                     q.Push(SharedRent3(l));
+                 while (q.TryPop(out int[]? v))
+                     SharedReturn3(v);
+             });
+         });
+         Trim();
+         GC.Collect();
+         GC.WaitForPendingFinalizers();
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static int[] SharedRent3(int length) => ExactLengthArrayPool<int>.Shared.Rent(length);
+         [MethodImpl(MethodImplOptions.NoInlining)]
+         static int[] SharedRent3(int length) => ExactLengthArrayPool<int>.Shared.Rent(length);
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void SharedReturn3(int[] array) => ExactLengthArrayPool<int>.Shared.Return(array);
+         [MethodImpl(MethodImplOptions.NoInlining)]
+         static void SharedReturn3(int[] array) => ExactLengthArrayPool<int>.Shared.Return(array);
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void Trim() => ExactLengthArrayPool<int>.Shared.Trim(true);*/
+         [MethodImpl(MethodImplOptions.NoInlining)]
+         static void Trim() => ExactLengthArrayPool<int>.Shared.Trim(true);*/
 
         Console.WriteLine("END");
     }
@@ -135,7 +131,7 @@ internal class Z
     {
         Console.WriteLine(typeof(T));
         SafeObjectPool<T> pool = new();
-        Parallel.For(0, 100, _ =>
+        For(0, 100, _ =>
         {
             Stack<T> q = new();
             for (int i = 0; i < 1000; i++)
@@ -160,6 +156,10 @@ internal class Z
 
     private static void For(int from, int to, Action<int> action)
     {
+        /*for (int i = from; i < to; i++)
+            action(i);
+
+        return;*/
         Thread[] threads = new Thread[to - from];
         for (int i = from, j = 0; i < to; i++, j++)
         {
@@ -178,7 +178,18 @@ internal class Z
 
     private struct UVDA : IDisposable
     {
-        public void Dispose() { }
+        private int o;
+
+        public UVDA()
+        {
+            o = 1;
+        }
+
+        public void Dispose()
+        {
+            Debug.Assert(o == 1);
+            o = 2;
+        }
     }
 
     private struct UVDN : IDisposable
@@ -199,10 +210,11 @@ internal class Z
 
     private struct MVD : IDisposable
     {
-        private Q o = new();
+        private Q o;
 
         public MVD()
         {
+            o = new();
         }
 
         public void Dispose() => o.Dispose();
