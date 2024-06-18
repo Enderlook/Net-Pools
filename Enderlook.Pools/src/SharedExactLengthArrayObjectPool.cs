@@ -49,7 +49,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
         get
         {
 #if NET5_0_OR_GREATER
-            Debug.Assert(PoolsCount <= Pools.Length);
+            Debug.Assert(PoolsCount <= AllPools.Length, "Index out of range.");
             return MemoryMarshal.CreateReadOnlySpan(ref MemoryMarshal.GetArrayDataReference(AllPools), PoolsCount);
 #else
             return AllPools.AsSpan(PoolsCount);
@@ -399,13 +399,13 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
         threadLocals.Add(length, (slot, this));
 #endif
 
-        GCHandle[]? allThreadLocalElements_ = Utils.NullExchange(ref AllThreadLocalElements);
+        GCHandle[]? allThreadLocalElements = Utils.NullExchange(ref AllThreadLocalElements);
 
-        int count_ = AllThreadLocalElementsCount;
-        if (unchecked((uint)count_ >= (uint)allThreadLocalElements_.Length))
+        int count = AllThreadLocalElementsCount;
+        if (unchecked((uint)count >= (uint)allThreadLocalElements.Length))
         {
-            ref GCHandle current = ref Utils.GetArrayDataReference(allThreadLocalElements_);
-            ref GCHandle end = ref Unsafe.Add(ref current, allThreadLocalElements_.Length);
+            ref GCHandle current = ref Utils.GetArrayDataReference(allThreadLocalElements);
+            ref GCHandle end = ref Unsafe.Add(ref current, allThreadLocalElements.Length);
 
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
@@ -420,15 +420,15 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
                 current = ref Unsafe.Add(ref current, 1);
             }
 
-            Array.Resize(ref allThreadLocalElements_, allThreadLocalElements_.Length * 2);
+            Array.Resize(ref allThreadLocalElements, allThreadLocalElements.Length * 2);
         }
 
-        Debug.Assert(count_ < allThreadLocalElements_.Length);
-        Unsafe.Add(ref Utils.GetArrayDataReference(allThreadLocalElements_), count_) = GCHandle.Alloc(slot, GCHandleType.Weak);
-        AllThreadLocalElementsCount = count_ + 1;
+        Debug.Assert(count < allThreadLocalElements.Length);
+        Unsafe.Add(ref Utils.GetArrayDataReference(allThreadLocalElements), count) = GCHandle.Alloc(slot, GCHandleType.Weak);
+        AllThreadLocalElementsCount = count + 1;
 
     end:
-        AllThreadLocalElements = allThreadLocalElements_;
+        AllThreadLocalElements = allThreadLocalElements;
         return slot;
     }
 

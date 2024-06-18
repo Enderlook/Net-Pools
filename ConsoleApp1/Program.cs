@@ -7,7 +7,7 @@ internal class Z
 {
     public static void Main()
     {
-        /*Console.WriteLine("Shared Start");
+        Console.WriteLine("Shared Start");
         SharedTest<UV>();
         SharedTest<UVDN>();
         SharedTest<UVDA>();
@@ -29,6 +29,7 @@ internal class Z
         InstanceTest<RNV>();
         Console.WriteLine("Instance End");
 
+        Console.WriteLine("Fast Start");
         FastObjectPool<object> pool = new();
         For(0, 100, _ =>
         {
@@ -41,12 +42,9 @@ internal class Z
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-
         Console.WriteLine("Fast End");
 
-        return;*/
-
-        Console.WriteLine("Shared Array Start");
+        /*Console.WriteLine("Shared Array Start");
 
         For(0, 100, _ =>
         {
@@ -93,7 +91,7 @@ internal class Z
 
         Console.WriteLine("Shared Array End");
 
-        Console.WriteLine("End");
+        Console.WriteLine("End");*/
 
 
 
