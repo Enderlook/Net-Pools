@@ -7,53 +7,26 @@ internal class Z
 {
     public static void Main()
     {
-        /* Stack<UVDA> q = new();
-         for (int j = 0; j < 2; j++)
-         {
-             for (int i = 0; i < 10000; i++)
-                 q.Push(SharedRent2());
-             while (q.TryPop(out var v))
-                 SharedReturn2(v);
-             Thread.Sleep(100);
-         }
+        /*Console.WriteLine("Shared Start");
+        SharedTest<UV>();
+        SharedTest<UVDN>();
+        SharedTest<UVDA>();
+        SharedTest<MV>();
+        SharedTest<MVD>();
+        SharedTest<RMD>();
+        SharedTest<RD>();
+        SharedTest<RNV>();
+        Console.WriteLine("Shared End");
 
-         [MethodImpl(MethodImplOptions.NoInlining)]
-         static UVDA SharedRent2() => ObjectPool<UVDA>.Shared.Rent();
-
-         [MethodImpl(MethodImplOptions.NoInlining)]
-         static void SharedReturn2(UVDA t) => ObjectPool<UVDA>.Shared.Return(t);*/
-
-        while (true)
-        {
-            /*SharedTest<UV>();
-            SharedTest<UVDN>();
-            SharedTest<UVDA>();
-            SharedTest<MV>();
-            SharedTest<MVD>();*/
-            //SharedTest<RMD>();
-            SharedTest<RD>();
-            //SharedTest<RNV>();
-
-            Console.WriteLine("Shared End");
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-        }
-
-        return;
-
-        /*InstanceTest<UV>();
+        Console.WriteLine("Instance Start");
+        InstanceTest<UV>();
         InstanceTest<UVDN>();
         InstanceTest<UVDA>();
         InstanceTest<MV>();
-        InstanceTest<MVD>();*/
+        InstanceTest<MVD>();
         InstanceTest<RMD>();
         InstanceTest<RD>();
         InstanceTest<RNV>();
-
         Console.WriteLine("Instance End");
 
         FastObjectPool<object> pool = new();
@@ -71,18 +44,34 @@ internal class Z
 
         Console.WriteLine("Fast End");
 
-        return;
+        return;*/
 
-       /* For(0, 100, _ =>
+        Console.WriteLine("Shared Array Start");
+
+        For(0, 100, _ =>
         {
-            var r = ExactLengthArrayPool<int>.SharedOf(16);
+            var r = ExactLengthArrayPool<int>.SharedOfLength(16);
             Stack<int[]> q = new();
             for (int i = 0; i < 1000; i++)
                 q.Push(r.Rent());
             while (q.TryPop(out int[]? v))
                 r.Return(v);
         });
-        ExactLengthArrayPool<int>.SharedOf(16).Trim(true);
+        ExactLengthArrayPool<int>.SharedOfLength(16).Trim(true);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
+        For(0, 100, _ =>
+        {
+            var r = ExactLengthArrayPool<byte>.Shared.OfLength(16);
+            Stack<byte[]> q = new();
+            for (int i = 0; i < 1000; i++)
+                q.Push(r.Rent());
+            while (q.TryPop(out byte[]? v))
+                r.Return(v);
+            GC.Collect();
+        });
+        ExactLengthArrayPool<int>.SharedOfLength(16).Trim(true);
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
@@ -92,25 +81,37 @@ internal class Z
             {
                 Stack<int[]> q = new();
                 for (int i = 0; i < 1000; i++)
-                    q.Push(SharedRent3(l));
+                    q.Push(SharedRentArray<int>(l));
                 while (q.TryPop(out int[]? v))
-                    SharedReturn3(v);
+                    SharedReturnArray(v);
+                GC.Collect();
             });
         });
-        Trim();
+        SharedTrimArray<int>();
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static int[] SharedRent3(int length) => ExactLengthArrayPool<int>.Shared.Rent(length);
+        Console.WriteLine("Shared Array End");
+
+        Console.WriteLine("End");
+
+
+
+        /*for (int i = 0; i < 10; i++)
+        {
+            for (int j = 0; j < 1000; j++)
+            {
+                var a = GetA(15);
+                var b = GetB(15);
+            }
+            Thread.Sleep(10);
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void SharedReturn3(int[] array) => ExactLengthArrayPool<int>.Shared.Return(array);
+        static ObjectPool<int[]> GetA(int i) => ExactLengthArrayPool<int>.SharedOfLength(i);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void Trim() => ExactLengthArrayPool<int>.Shared.Trim(true);*/
-
-        Console.WriteLine("END");
+        static ObjectPool<int[]> GetB(int i) => ExactLengthArrayPool<int>.Shared.OfLength(i);*/
     }
 
     private static void SharedTest<T>()
@@ -265,4 +266,13 @@ internal class Z
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void SharedReturn<T>(T t) => ObjectPool<T>.Shared.Return(t);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedTrimArray<T>() => ExactLengthArrayPool<T>.Shared.Trim(true);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T[] SharedRentArray<T>(int length) => ExactLengthArrayPool<T>.Shared.Rent(length);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedReturnArray<T>(T[] t) => ExactLengthArrayPool<T>.Shared.Return(t);
 }

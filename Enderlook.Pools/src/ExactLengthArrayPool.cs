@@ -35,7 +35,16 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
     ///     <item>Is thread-safe.</item>
     /// </list>
     /// </summary>
-    public static ObjectPool<T[]> SharedOf(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
+    /// <param name="length">Length of arrays.</param>
+    /// <returns>Wrapper of pool.</returns>
+    public static ObjectPool<T[]> SharedOfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
+
+    /// <summary>
+    /// Produces a wrapper <see cref="ObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
+    /// </summary>
+    /// <param name="length">Length of arrays.</param>
+    /// <returns>Wrapper of pool.</returns>
+    public virtual ObjectPool<T[]> OfLength(int length) => new ExactLengthArrayPoolAdapter<T>(this, length);
 
     /// <summary>
     /// Gets an approximate count of the objects stored in the pool.<br/>
