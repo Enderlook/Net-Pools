@@ -7,8 +7,8 @@ internal class Z
 {
     public static void Main()
     {
-        Console.WriteLine("Shared Start");
-        SharedTest<UV>();
+        /*Console.WriteLine("Shared Start");
+        SharedTest<UVZ>();
         SharedTest<UVDN>();
         SharedTest<UVDA>();
         SharedTest<MV>();
@@ -19,7 +19,7 @@ internal class Z
         Console.WriteLine("Shared End");
 
         Console.WriteLine("Instance Start");
-        InstanceTest<UV>();
+        InstanceTest<UVZ>();
         InstanceTest<UVDN>();
         InstanceTest<UVDA>();
         InstanceTest<MV>();
@@ -28,6 +28,7 @@ internal class Z
         InstanceTest<RD>();
         InstanceTest<RNV>();
         Console.WriteLine("Instance End");
+        return;
 
         Console.WriteLine("Fast Start");
         FastObjectPool<object> pool = new();
@@ -35,16 +36,17 @@ internal class Z
         {
             Stack<object> q = new();
             for (int i = 0; i < 1000; i++)
-                q.Push(pool.Rent());
+                q.Push(Rent(pool));
             while (q.TryPop(out object? v))
-                pool.Return(v);
+                Return(pool, v);
         });
+        Trim(pool);
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        Console.WriteLine("Fast End");
+        Console.WriteLine("Fast End");*/
 
-        /*Console.WriteLine("Shared Array Start");
+        Console.WriteLine("Shared Array Start");
 
         For(0, 100, _ =>
         {
@@ -91,7 +93,7 @@ internal class Z
 
         Console.WriteLine("Shared Array End");
 
-        Console.WriteLine("End");*/
+        Console.WriteLine("End");
 
 
 
@@ -113,13 +115,19 @@ internal class Z
     }
 
     private static void SharedTest<T>()
+        where T : I
     {
         Console.WriteLine(typeof(T));
         For(0, 100, _ =>
         {
             Stack<T> q = new();
             for (int i = 0; i < 10000; i++)
-                q.Push(SharedRent<T>());
+            {
+                T? t = SharedRent<T>();
+                t.Assert();
+                q.Push(t);
+            }
+
             while (q.TryPop(out T? v))
                 SharedReturn(v);
             GC.Collect();
@@ -131,6 +139,7 @@ internal class Z
     }
 
     private static void InstanceTest<T>()
+        where T : I
     {
         Console.WriteLine(typeof(T));
         SafeObjectPool<T> pool = new();
@@ -138,7 +147,12 @@ internal class Z
         {
             Stack<T> q = new();
             for (int i = 0; i < 1000; i++)
-                q.Push(Rent(pool));
+            {
+                T t = Rent(pool);
+                t.Assert();
+                q.Push(t);
+            }
+
             while (q.TryPop(out T? v))
                 Return(pool, v);
         });
@@ -146,7 +160,6 @@ internal class Z
         GC.Collect();
         GC.WaitForPendingFinalizers();
     }
-
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static T Rent<T>(SafeObjectPool<T> pool) => pool.Rent();
@@ -156,6 +169,33 @@ internal class Z
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void Trim<T>(SafeObjectPool<T> pool) => pool.Trim(true);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T Rent<T>(FastObjectPool<T> pool) where T : class => pool.Rent();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void Return<T>(FastObjectPool<T> pool, T value) where T : class => pool.Return(value);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void Trim<T>(FastObjectPool<T> pool) where T : class => pool.Trim(true);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedTrim<T>() => ObjectPool<T>.Shared.Trim(true);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T SharedRent<T>() => ObjectPool<T>.Shared.Rent();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedReturn<T>(T t) => ObjectPool<T>.Shared.Return(t);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedTrimArray<T>() => ExactLengthArrayPool<T>.Shared.Trim(true);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T[] SharedRentArray<T>(int length) => ExactLengthArrayPool<T>.Shared.Rent(length);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SharedReturnArray<T>(T[] t) => ExactLengthArrayPool<T>.Shared.Return(t);
 
     private static void For(int from, int to, Action<int> action)
     {
@@ -173,14 +213,37 @@ internal class Z
         }
     }
 
-    private struct UV { }
-
-    private struct UVDA : IDisposable
+    private interface I
     {
-        public void Dispose() { }
+        void Assert() { }
     }
 
-    private struct UVDN : IDisposable
+    private struct UVZ : I { }
+
+    private struct UVDA : IDisposable, I
+    {
+        private byte a;
+        private byte c;
+
+        public UVDA()
+        {
+            a = 1;
+            c = (byte)Random.Shared.Next();
+        }
+
+        public void Dispose()
+        {
+            Debug.Assert(a == 1);
+            a = 2;
+        }
+
+        public void Assert()
+        {
+            Debug.Assert(a == 1);
+        }
+    }
+
+    private struct UVDN : IDisposable, I
     {
         private int q;
         private int q2;
@@ -188,15 +251,40 @@ internal class Z
         private int q4;
         private int q5;
 
-        public void Dispose() { }
+        public UVDN()
+        {
+            q = 1;
+            q2 = Random.Shared.Next();
+        }
+
+        public void Dispose()
+        {
+            Debug.Assert(q == 1);
+            q = 2;
+        }
+
+        public void Assert()
+        {
+            Debug.Assert(q == 1);
+        }
     }
 
-    private struct MV
+    private struct MV : I
     {
         private object o;
+
+        public MV()
+        {
+            o = new();
+        }
+
+        public void Assert()
+        {
+            Debug.Assert(o is not null);
+        }
     }
 
-    private struct MVD : IDisposable
+    private struct MVD : IDisposable, I
     {
         private Q o = new();
 
@@ -205,6 +293,11 @@ internal class Z
         }
 
         public void Dispose() => o.Dispose();
+
+        public void Assert()
+        {
+            Debug.Assert(o is not null);
+        }
 
         class Q()
         {
@@ -225,10 +318,10 @@ internal class Z
         }
     }
 
-    public class RMD { }
+    public class RMD : I { }
 
     [DebuggerDisplay("{w} {disposed}")]
-    public class RD : IDisposable
+    public class RD : IDisposable, I
     {
         private static int q;
 
@@ -254,23 +347,5 @@ internal class Z
         public override bool Equals(object? obj) => obj is RD r ? r.w == w : false;
     }
 
-    public sealed class RNV { }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SharedTrim<T>() => ObjectPool<T>.Shared.Trim(true);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T SharedRent<T>() => ObjectPool<T>.Shared.Rent();
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SharedReturn<T>(T t) => ObjectPool<T>.Shared.Return(t);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SharedTrimArray<T>() => ExactLengthArrayPool<T>.Shared.Trim(true);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T[] SharedRentArray<T>(int length) => ExactLengthArrayPool<T>.Shared.Rent(length);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void SharedReturnArray<T>(T[] t) => ExactLengthArrayPool<T>.Shared.Return(t);
+    public sealed class RNV : I { }
 }
