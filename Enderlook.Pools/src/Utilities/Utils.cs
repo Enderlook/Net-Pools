@@ -104,7 +104,7 @@ internal static class Utils
         => throw new ArgumentNullException("element");
 
     public static void ThrowArgumentOutOfRangeException_ArrayLength()
-        => throw new ArgumentOutOfRangeException("element", "Doesn't match expected array length");
+        => throw new ArgumentOutOfRangeException("element", "Doesn't match expected array length.");
 
     public static void ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative()
         => throw new ArgumentOutOfRangeException("reserve", "Can't be negative.");
