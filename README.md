@@ -194,7 +194,6 @@ namespace Enderlook.Pools
 		/// <summary>
 		/// Creates a pool of objects.
 		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public SafeObjectPool();
 	}	
 }
