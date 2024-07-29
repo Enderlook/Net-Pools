@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -54,45 +53,39 @@ internal static class Utils
         where T : class
     {
         SpinWait spinWait = new();
-        T? current;
         while (true)
         {
-            current = Interlocked.Exchange(ref slot, null);
+            T? current = Interlocked.Exchange(ref slot, null);
             if (current is not null)
-                break;
+                return current;
             spinWait.SpinOnce();
         }
-        return current;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MinusOneExchange(ref int slot)
     {
         SpinWait spinWait = new();
-        int current;
         while (true)
         {
-            current = Interlocked.Exchange(ref slot, LOCKED);
+            int current = Interlocked.Exchange(ref slot, LOCKED);
             if (current != LOCKED)
-                break;
+                return current;
             spinWait.SpinOnce();
         }
-        return current;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MinusOneRead(ref int slot)
     {
         SpinWait spinWait = new();
-        int current;
         while (true)
         {
-            current = Volatile.Read(ref slot);
+            int current = Volatile.Read(ref slot);
             if (current != LOCKED)
-                break;
+                return current;
             spinWait.SpinOnce();
         }
-        return current;
     }
 
     [DoesNotReturn]
