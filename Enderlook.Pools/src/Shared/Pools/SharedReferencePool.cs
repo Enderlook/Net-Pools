@@ -129,23 +129,18 @@ internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TEleme
 
         // Try to store the object from one of the per-core stacks.
         // We don't use a helper method, because calling it (even with aggressive inlining) produced an additional branching.
-        SharedPerCoreStack[] perCoreStacks_ = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
-        ref SharedPerCoreStack perCoreStacks_Root = ref Utils.GetArrayDataReference(perCoreStacks_);
+        SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, ObjectWrapper>.PerCoreStacks;
+        ref SharedPerCoreStack perCoreStacksRoot = ref Utils.GetArrayDataReference(perCoreStacks);
         // Try to push from the associated stack first.
         // If that fails, try with other stacks.
-#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
-        int currentProcessorId = Thread.GetCurrentProcessorId();
-#else
-        int currentProcessorId = Thread.CurrentThread.ManagedThreadId; // TODO: This is probably a bad idea.
-#endif
-        int index = (int)((uint)currentProcessorId % (uint)SharedPoolHelpers.PerCoreStacksCount);
-        for (int i = 0; i < perCoreStacks_.Length; i++)
+        int index = SharedPoolHelpers.GetStartingIndex();
+        for (int i = 0; i < perCoreStacks.Length; i++)
         {
-            Debug.Assert(index < perCoreStacks_.Length);
-            if (Unsafe.Add(ref perCoreStacks_Root, index).TryPush(new ObjectWrapper(old)))
+            Debug.Assert(index < perCoreStacks.Length);
+            if (Unsafe.Add(ref perCoreStacksRoot, index).TryPush(new ObjectWrapper(old)))
                 return;
 
-            if (++index == perCoreStacks_.Length)
+            if (++index == perCoreStacks.Length)
                 index = 0;
         }
         SlowPath2(index, old);
