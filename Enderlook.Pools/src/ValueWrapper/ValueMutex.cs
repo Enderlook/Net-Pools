@@ -25,8 +25,11 @@ internal struct ValueMutex<T> : IValueWrapper<T>
 
         if (oldLock == 2)
         {
-            value = this.NotSynchronizedValue!;
-            this.NotSynchronizedValue = default;
+            value = NotSynchronizedValue!;
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+                NotSynchronizedValue = default;
             @lock = 0;
             return true;
         }
@@ -60,7 +63,10 @@ internal struct ValueMutex<T> : IValueWrapper<T>
     public void Clear()
     {
         Lock();
-        NotSynchronizedValue = default;
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+            NotSynchronizedValue = default;
         @lock = 0;
     }
 
@@ -73,7 +79,7 @@ internal struct ValueMutex<T> : IValueWrapper<T>
         {
             if (oldLock != 1)
             {
-                oldLock = Interlocked.CompareExchange(ref @lock, oldLock, 1);
+                oldLock = Interlocked.Exchange(ref @lock, 1);
                 if (oldLock != 1)
                     break;
             }
