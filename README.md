@@ -195,6 +195,141 @@ namespace Enderlook.Pools
 		/// Creates a pool of objects.
 		/// </summary>
 		public SafeObjectPool();
-	}	
+	}
+
+	/// <summary>
+	/// A fast, dynamically-sized and thread-safe array pool to store arrays of an specific length.<br/>
+	/// </summary>
+	/// <typeparam name="T">Type of element array to pool</typeparam>
+	public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T>
+	{
+		/// <summary>
+		/// Determines the length of the pooled arrays.
+		/// </summary>
+		public int Length { get; }
+	
+		/// <summary>
+		/// Capacity of the pool.<br/>
+		/// This region of the pool support concurrent access.<br/>
+		/// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.
+		/// </summary>
+		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
+		public int Capacity { get; init; } = Environment.ProcessorCount * 2 - 1;
+
+		/// <summary>
+		/// Current capacity of the reserve.<br/>
+		/// This reserve pool is only acceded when the non-reserve capacity gets full or empty.<br/>
+		/// This is because this region can only be acceded by a single thread<br/>
+		/// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.
+		/// </summary>
+		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is negative.</exception>
+		public int Reserve { get; init; } = Environment.ProcessorCount * 2;
+
+		/// <summary>
+		/// Determines if the reserve pool is allowed to grow and shrink given its usage.
+		/// </summary>
+		public bool IsReserveDynamic { get; init; } = true;
+		
+		/// <summary>
+		/// Creates a pool of exact length array.
+		/// </summary>
+		/// <param name="length">Length of the pooled arrays.</param>
+		public SafeExactLengthArrayObjectPool(int length);
+	}
+	
+	/// <summary>
+	/// Represent a pool of arrays of exact length.
+	/// </summary>
+	/// <typeparam name="T">Type of object to pool.</typeparam>
+	public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
+	{
+		/// <summary>
+		/// Retrieves a shared <see cref="ExactLengthArrayPool{T}"/> instance.<br/>
+		/// The shared pool has the following features:
+		/// <list type="bullet">
+		///     <item>Instantiates new elements when empty.</item>
+		///     <item>Resize itself to accommodate all returned elements to the pool.</item>
+		///     <item>Periodically trims itself removing old elements from the pool (GC-triggered).</item>
+		///     <item>Is thread-safe.</item>
+		/// </list>
+		/// </summary>
+		public static new ExactLengthArrayPool<T> Shared { get; }
+
+		/// <summary>
+		/// Retrieves a shared <see cref="ObjectPool{T}"/> instance configured to create arrays of the specified length.<br/>
+		/// The shared pool has the following features:
+		/// <list type="bullet">
+		///     <item>Instantiates new elements when empty.</item>
+		///     <item>Resize itself to accommodate all returned elements to the pool.</item>
+		///     <item>Periodically trims itself removing old elements from the pool (GC-triggered).</item>
+		///     <item>Is thread-safe.</item>
+		/// </list>
+		/// </summary>
+		/// <param name="length">Length of arrays.</param>
+		/// <returns>Wrapper of pool.</returns>
+		public static ObjectPool<T[]> SharedOfLength(int length);
+
+		/// <summary>
+		/// Produces a wrapper <see cref="ObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
+		/// </summary>
+		/// <param name="length">Length of arrays.</param>
+		/// <returns>Wrapper of pool.</returns>
+		public virtual ObjectPool<T[]> OfLength(int length);
+
+		/// <summary>
+		/// Gets an approximate count of the objects stored in the pool.<br/>
+		/// This value is not accurate and may be lower or higher than the actual count.<br/>
+		/// This is primary used for debugging purposes.
+		/// </summary>
+		/// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
+		public abstract int ApproximateCount();
+
+		/// <summary>
+		/// Trim the content of the pool.
+		/// </summary>
+		/// <param name="force">If <see langword="true"/>, the pool is forced to clear all elements inside. Otherwise, the pool may only clear partially or not clear at all if the heuristic says so.</param>
+		public abstract void Trim(bool force = false);
+	}
+		
+	/// <summary>
+	/// A fast, dynamically-sized and thread-safe array pool to store arrays of specific lengths.<br/>
+	/// </summary>
+	/// <typeparam name="T">Type of element array to pool</typeparam>
+	public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
+	{	
+		/// <summary>
+		/// Capacity of the pool.<br/>
+		/// This region of the pool support concurrent access.<br/>
+		/// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.
+		/// </summary>
+		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
+		public int Capacity { get; init; }
+
+		/// <summary>
+		/// Current capacity of the reserve.<br/>
+		/// This reserve pool is only acceded when the non-reserve capacity gets full or empty.<br/>
+		/// This is because this region can only be acceded by a single thread<br/>
+		/// This pool has a dynamic size so this value represent the initial size of the pool which may enlarge or shrink over time.
+		/// </summary>
+		/// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is negative.</exception>
+		public int Reserve { get; init; }
+
+		/// <summary>
+		/// Determines if the reserve pool is allowed to grow and shrink given its usage.
+		/// </summary>
+		public bool IsReserveDynamic { get; init; } = true;
+
+		/// <summary>
+		/// Creates a new instance of the pool.
+		/// </summary>
+		public SafeExactLengthArrayPool();
+		
+		/// <summary>
+		/// Gives the internal <see cref="SafeExactLengthArrayObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
+		/// </summary>
+		/// <param name="length">Length of arrays.</param>
+		/// <returns>Wrapper of pool.</returns>
+		public override ExactLengthArrayPool<T[]> OfLength(int length);
+	}
 }
 ```

@@ -208,6 +208,33 @@ internal static class ObjectPoolHelper
         return self.factory();
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static T[] FillFromReserveReference<T>(this SafeExactLengthArrayObjectPool<T> self)
+    {
+        Debug.Assert(self.array is ObjectWrapper[]);
+        ObjectWrapper[] items_ = Unsafe.As<ObjectWrapper[]>(self.array);
+        Array reserve_ = Utils.NullExchange(ref self.reserve);
+        Debug.Assert(reserve_ is ObjectWrapper[]);
+        ObjectWrapper[] reserve = Unsafe.As<ObjectWrapper[]>(reserve_);
+
+        int oldCount = self.reserveCount;
+        if (oldCount > 0)
+        {
+            object element = FillFromReserve_(items_, reserve, ref oldCount);
+            self.reserveCount = oldCount;
+            self.reserve = reserve;
+            Debug.Assert(element is T[]);
+            return Unsafe.As<object, T[]>(ref element);
+        }
+
+        self.reserve = reserve;
+#if NET5_0_OR_GREATER
+        return GC.AllocateUninitializedArray<T>(self.Length);
+#else
+        return new T[self.Length];
+#endif
+    }
+
     private static object FillFromReserve_(ObjectWrapper[] items, ObjectWrapper[] reserve, ref int reserveCount)
     {
         int reserveCount_ = reserveCount;
@@ -355,6 +382,37 @@ internal static class ObjectPoolHelper
                         freeCallback_(obj);
                         break;
                 }
+                self.reserve = reserve;
+                return;
+            }
+        }
+
+        int newReserveCount = SendToReserve_(obj, items, reserve, ref reserveCount);
+
+        self.reserveCount = newReserveCount;
+        self.reserve = reserve;
+    }
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void SendToReserve<T>(this SafeExactLengthArrayObjectPool<T> self, T[] obj)
+    {
+        Debug.Assert(obj is not null);
+
+        Debug.Assert(self.array is ObjectWrapper[]);
+        ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(self.array);
+        Array reserve_ = Utils.NullExchange(ref self.reserve);
+        Debug.Assert(reserve_ is ObjectWrapper[]);
+        ObjectWrapper[] reserve = Unsafe.As<ObjectWrapper[]>(reserve_);
+
+        int reserveCount = self.reserveCount;
+        int newCount = reserveCount + 1 + (items.Length / 2);
+        if (newCount > reserve.Length)
+        {
+            if (self.IsReserveDynamic)
+                Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
+            else if (reserveCount + 1 == reserve.Length)
+            {
                 self.reserve = reserve;
                 return;
             }

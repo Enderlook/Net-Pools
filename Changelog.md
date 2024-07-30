@@ -20,6 +20,7 @@
 - Support disposing and custom dispoing in `SafeValueObjectPool<T>`.
 - Fix `Trim(bool)` in `ObjectPool<T>.Shared` not trimming correctly values.
 - Support disposing in `ObjectPool<T>.Shared`.
+- Add `ExactLengthArrayPool<T>`, `SafeExactLengthArrayPoool<T>` and `SafeExactLengthArrayObjectPool<T>`.
 
 ## v0.2.3
 - Improve documentation.

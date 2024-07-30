@@ -6,27 +6,26 @@ using System.Threading;
 namespace Enderlook.Pools;
 
 /// <summary>
-/// A lightweight, fast, dynamically-sized and thread-safe object pool to store objects.<br/>
-/// The pool is designed for fast rent and return of elements, so during multithreading scenarios it may accidentally free unnecessary objects during return (however, this is not a fatal error for the pool).
+/// A fast, dynamically-sized and thread-safe array pool to store arrays of an specific length.<br/>
 /// </summary>
-/// <typeparam name="T">Type of object to pool</typeparam>
-public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
+/// <typeparam name="T">Type of element array to pool</typeparam>
+public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
 {
     /// <summary>
-    /// Delegate that instantiates new object.
+    /// Determines the length of the pooled arrays.
     /// </summary>
-    private readonly Func<T> factory;
+    public int Length { get; }
 
     /// <summary>
     /// Storage for the pool objects.<br/>
     /// The array is not an stack so the whole array must be traversed to find objects.
     /// </summary>
-    private readonly ObjectWrapper[] array;
+    internal readonly Array array;
 
     /// <summary>
     /// The first item is stored in a dedicated field because we expect to be able to satisfy most requests from it.
     /// </summary>
-    private T? firstElement;
+    private T[]? firstElement;
 
     /// <summary>
     /// A dynamic-size stack reserve of objects.<br/>
@@ -35,12 +34,12 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.<br/>
     /// However, those operations only moves the first half of the array to prevent a point where this is executed on each rent or return.
     /// </summary>
-    private ObjectWrapper[]? reserve;
+    internal Array? reserve;
 
     /// <summary>
     /// Keep tracks of the amount of used slots in <see cref="reserve"/>.
     /// </summary>
-    private int reserveCount;
+    internal int reserveCount;
 
     /// <summary>
     /// Keep record of last time <see cref="reserve"/> was trimmed;
@@ -60,11 +59,17 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
     public int Capacity
     {
-        get => array.Length + 1;
+        get
+        {
+            Debug.Assert(array is ObjectWrapper[]);
+            ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+            return items.Length + 1;
+        }
         init
         {
             if (value < 1) Utils.ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne();
-            array = new ObjectWrapper[value - 1]; // -1 due to firstElement.
+            value -= 1;  // -1 due to firstElement.
+            array = new ObjectWrapper[value];
         }
     }
 
@@ -79,15 +84,17 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     {
         get
         {
-            ObjectWrapper[] reserve_ = Utils.NullExchange(ref reserve);
-            int count = reserve_.Length;
+            Array? reserve_ = Utils.NullExchange(ref reserve);
+            int count;
+            Debug.Assert(reserve_ is ObjectWrapper[]);
+            count = Unsafe.As<ObjectWrapper[]>(reserve_).Length;
             reserve = reserve_;
             return count;
         }
         init
         {
             if (value < 0) Utils.ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative();
-            reserve = new ObjectWrapper[value];
+            reserve = typeof(T).IsValueType ? new T[value] : new ObjectWrapper[value];
         }
     }
 
@@ -97,36 +104,32 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     public bool IsReserveDynamic { get; init; } = true;
 
     /// <summary>
-    /// Delegate which instantiates new objects.<br/>
-    /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
+    /// Creates a pool of exact length array.
     /// </summary>
-    public Func<T> Factory => factory;
-
-    /// <summary>
-    /// Creates a pool of objects.
-    /// </summary>
-    /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-    /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-    public FastObjectPool(Func<T>? factory)
+    /// <param name="length">Length of the pooled arrays.</param>
+    public SafeExactLengthArrayObjectPool(int length)
     {
-        this.factory = factory ?? ObjectPoolHelper<T>.Factory;
+        Length = length;
         int capacity = Environment.ProcessorCount * 2;
-        array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         reserve = new ObjectWrapper[capacity];
-        GCCallbackObject<T> _ = new(this);
+        array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
+        GCCallbackObject<T[]> _ = new(this);
     }
 
-    /// <summary>
-    /// Creates a pool of objects.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public FastObjectPool() : this(null) { }
+    internal SafeExactLengthArrayObjectPool(int length, bool _)
+    {
+        Length = length;
+        int capacity = Environment.ProcessorCount * 2;
+        reserve = new ObjectWrapper[capacity];
+        array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
+    }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
         int count = firstElement is null ? 0 : 1;
-        ObjectWrapper[] items = array;
+        Debug.Assert(array is ObjectWrapper[]);
+        ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
         ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
         ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
         while (Unsafe.IsAddressLessThan(ref current, ref end))
@@ -139,18 +142,19 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     }
 
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
-    public override T Rent()
+    public override T[] Rent()
     {
         // First, we examine the first element.
         // If that fails, we look at the remaining elements.
         // Note that intitial read are optimistically not synchronized. This is intentional.
         // We will interlock only when we have a candidate.
         // In a worst case we may miss some recently returned objects.
-        T? element = firstElement;
-        if (element is null || element != Interlocked.CompareExchange(ref firstElement, null, element))
+        T[]? element = firstElement;
+        if (element is null || !ReferenceEquals(element, Interlocked.CompareExchange(ref firstElement, null, element)))
         {
             // Next, we look at all remaining elements.
-            ObjectWrapper[] items = array;
+            Debug.Assert(array is ObjectWrapper[]);
+            ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
             ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
             ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
@@ -158,15 +162,23 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
                 // Note that intitial read are optimistically not synchronized. This is intentional.
                 // We will interlock only when we have a candidate.
                 // In a worst case we may miss some recently returned objects.
-                Debug.Assert(current.Value is null or T);
-                element = Unsafe.As<T?>(current.Value);
-                if (element is not null && element == Interlocked.CompareExchange(ref current.Value, null, element))
-                    break;
+                Debug.Assert(current.Value is null or T[]);
+                element = Unsafe.As<object?, T[]?>(ref current.Value);
+                if (element is not null && ReferenceEquals(element, Interlocked.CompareExchange(ref current.Value, null, element)))
+                    return element;
                 current = ref Unsafe.Add(ref current, 1);
             }
 
             // Next, we look at the reserve if it has elements.
-            element = reserveCount > 0 ? FillFromReserve() : factory();
+            int length = Length;
+            if (length == 0)
+                return Array.Empty<T>();
+
+#if NET5_0_OR_GREATER
+            element = reserveCount > 0 ? this.FillFromReserveReference() : GC.AllocateUninitializedArray<T>(Length);
+#else
+            element = reserveCount > 0 ? this.FillFromReserveReference() : new T[length];
+#endif
         }
 
         return element;
@@ -176,32 +188,40 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     /// Return rented object to pool.
     /// </summary>
     /// <param name="element">Object to return.</param>
-    public override void Return(T element)
+    public override void Return(T[] element)
     {
-        // Intentionally not using interlocked here.
-        // In a worst case scenario two objects may be stored into same slot.
-        // It is very unlikely to happen and will only mean that one of the objects will get collected.
-        if (firstElement is null)
-            firstElement = element;
-        else
+        if (element is null) return;
+        if (element.Length != Length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
+
+        Return_(element);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void Return_(T[] element)
+    {
+        Debug.Assert(element.Length == Length);
+
+        if (Length == 0)
+            return;
+
+        // First, we examine the first element.
+        // Then do interlocking.
+
+        if (firstElement is not null || Interlocked.CompareExchange(ref firstElement, element, null) is not null)
         {
-            ObjectWrapper[] items = array;
+            Debug.Assert(array is ObjectWrapper[]);
+            ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
             ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
             ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
-                if (current.Value is null)
-                {
-                    // Intentionally not using interlocked here.
-                    // In a worst case scenario two objects may be stored into same slot.
-                    // It is very unlikely to happen and will only mean that one of the objects will get collected.
-                    current.Value = element;
+                // Intentionally we first check if there is an element to avoid unecessary locking.
+                if (current.Value is null && Interlocked.CompareExchange(ref current.Value, element, null) is null)
                     return;
-                }
                 current = ref Unsafe.Add(ref current, 1);
             }
 
-            SendToReserve(element);
+            this.SendToReserve(element);
         }
     }
 
@@ -226,8 +246,9 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 
         firstElement = null; // We always trim the first element.
 
-        ObjectWrapper[] items = array;
-        int length = items.Length;
+        Debug.Assert(array is ObjectWrapper[]);
+        ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
+        int itemsLength = items.Length;
 
         int arrayTrimMilliseconds;
         int arrayTrimCount;
@@ -236,7 +257,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         if (force)
         {
             // Forces to clear everything regardless of time.
-            arrayTrimCount = length;
+            arrayTrimCount = itemsLength;
             arrayTrimMilliseconds = 0;
             reserveTrimMilliseconds = 0;
             reserveTrimPercentage = 1;
@@ -246,9 +267,9 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
             switch (Utils.GetMemoryPressure())
             {
                 case Utils.MemoryPressure.High:
-                    arrayTrimCount = length;
-                    arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                     // Forces to clear everything regardless of time.
+                    arrayTrimCount = itemsLength;
+                    arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                     reserveTrimMilliseconds = 0;
                     reserveTrimPercentage = 1;
                     break;
@@ -276,44 +297,19 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
             // We've elapsed enough time since the last clean.
             // Drop the top items so they can be collected and make the pool look a little newer.
 
-            if (arrayTrimCount != length)
-            {
-                ref ObjectWrapper current = ref Utils.GetArrayDataReference(items);
-                Debug.Assert(items.Length == length);
-                ref ObjectWrapper end = ref Unsafe.Add(ref current, length);
-                while (Unsafe.IsAddressLessThan(ref current, ref end))
-                {
-                    if (current.Value is not null)
-                    {
-                        // Intentionally not using interlocked here.
-                        current.Value = null;
-                        if (--arrayTrimCount == 0)
-                        {
-                            arrayMillisecondsTimeStamp = arrayMillisecondsTimeStamp_ + arrayMillisecondsTimeStamp_ / 4; // Give the remaining items a bit more time.
-                            goto end;
-                        }
-                    }
-                    current = ref Unsafe.Add(ref current, 1);
-                }
-                arrayMillisecondsTimeStamp = 0;
-            end:;
-            }
+            bool complete = ObjectPoolHelper.ClearPool(items, arrayTrimCount);
+
+            if (complete)
+                arrayMillisecondsTimeStamp = arrayMillisecondsTimeStamp_ + arrayMillisecondsTimeStamp_ / 4; // Give the remaining items a bit more time.
             else
-            {
-#if NET6_0_OR_GREATER
-                Array.Clear(items);
-#else
-                Array.Clear(items, 0, length);
-#endif
                 arrayMillisecondsTimeStamp = 0;
-            }
         }
 
-        int oldReserveCount = reserveCount;
         int newReserveCount;
         int newReserveLength;
-        int itemsLength = items.Length;
-        ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
+        Debug.Assert(array is ObjectWrapper[]);
+        Array reserve_ = Utils.NullExchange(ref reserve);
+        int oldReserveCount = reserveCount;
         int oldReserveLength = reserve_.Length;
         bool isReserveDynamic = IsReserveDynamic;
         // Under high pressure, we don't wait time to trim, so we remove all objects in reserve.
@@ -343,11 +339,11 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
                 if (isReserveDynamic && oldReserveLength / newReserveCount >= ReserveShrinkFactorToStart)
                 {
                     Debug.Assert(ReserveShrinkFactorToStart >= ReserveShrinkFactor);
-                    newReserveLength = Math.Min(oldReserveLength / ReserveShrinkFactor, itemsLength);
+                    newReserveLength = Math.Max(oldReserveLength / ReserveShrinkFactor, itemsLength);
                     newReserveLength = Math.Max(newReserveLength, newReserveCount);
                 }
                 else
-                    newReserveLength = oldReserveCount;
+                    newReserveLength = oldReserveLength;
             }
             else
             {
@@ -357,99 +353,28 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         }
 
         newReserveLength = isReserveDynamic ? Math.Max(newReserveLength, Math.Min(oldReserveLength, itemsLength)) : oldReserveLength;
+        Debug.Assert(newReserveLength <= oldReserveLength);
+        Debug.Assert(newReserveLength >= newReserveCount);
 
-        // No need to clean the array if there is nothing to clear or we are gonna replace it with a new array anyway.
+        if (oldReserveCount > 0)
+        {
+            // Clear the array only if we are not gonna replace it with a new one.
+#if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#endif
+            {
+                if (newReserveLength == oldReserveLength)
+                {
+                    Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
+                }
+            }
+        }
+
         if (newReserveLength != oldReserveLength)
         {
-            ObjectWrapper[] newReserve = new ObjectWrapper[newReserveLength];
+            Array newReserve = new ObjectWrapper[newReserveLength];
             Array.Copy(reserve_, newReserve, newReserveCount);
-            reserve_ = newReserve;
         }
-        else if (oldReserveCount > 0)
-            Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
-
-        reserveCount = newReserveCount;
-        reserve = reserve_;
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private T FillFromReserve()
-    {
-        ObjectWrapper[] items = array;
-        ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
-
-        int reserveCount_ = reserveCount;
-        if (reserveCount_ > 0)
-        {
-            int oldReserveCount = reserveCount_;
-
-            ref ObjectWrapper startReserve = ref Utils.GetArrayDataReference(reserve_);
-            ref ObjectWrapper currentReserve = ref Unsafe.Add(ref startReserve, reserveCount_ - 1);
-
-#if DEBUG
-            int i = 1;
-#endif
-
-            object value = currentReserve.Value!;
-            Debug.Assert(value is not null);
-            currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
-            Debug.Assert(--reserveCount_ >= 0);
-
-            ref ObjectWrapper currentItem = ref Utils.GetArrayDataReference(items);
-            ref ObjectWrapper endItem = ref Unsafe.Add(ref currentItem, Math.Min(oldReserveCount - 1, items.Length / 2));
-            while (Unsafe.IsAddressLessThan(ref currentItem, ref endItem))
-            {
-                // Note that intitial read and write are optimistically not synchronized. This is intentional.
-                // In a worst case we may miss some recently returned objects or accidentally free objects.
-                if (currentItem.Value is null)
-                {
-#if DEBUG
-                    i++;
-#endif
-                    currentReserve = ref Unsafe.Subtract(ref currentReserve, 1);
-                    Debug.Assert(--reserveCount_ >= 0);
-                }
-                currentItem = ref Unsafe.Add(ref currentItem, 1);
-            }
-
-            int newReserveCount = (int)((long)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>()) + 1;
-            Debug.Assert(newReserveCount == reserveCount_);
-#if DEBUG
-            Debug.Assert(i == oldReserveCount - newReserveCount);
-#endif
-            Array.Clear(reserve_, newReserveCount, oldReserveCount - newReserveCount);
-            reserveCount = newReserveCount;
-            reserve = reserve_;
-            Debug.Assert(value is T);
-            return Unsafe.As<T>(value);
-        }
-
-        reserve = reserve_;
-        return factory();
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void SendToReserve(T obj)
-    {
-        if (obj is null) return;
-
-        ObjectWrapper[] items = array;
-        ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
-
-        int currentReserveCount = reserveCount;
-        int newCount = currentReserveCount + 1 + (items.Length / 2);
-        if (newCount > reserve_.Length)
-        {
-            if (IsReserveDynamic)
-                Array.Resize(ref reserve_, Math.Max(newCount, Math.Max(reserve_.Length * 2, 1)));
-            else if (currentReserveCount + 1 == reserve_.Length)
-            {
-                reserve = reserve_;
-                return;
-            }
-        }
-
-        int newReserveCount = ObjectPoolHelper.SendToReserve_(obj, items, reserve_, ref reserveCount);
 
         reserveCount = newReserveCount;
         reserve = reserve_;
