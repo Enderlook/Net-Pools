@@ -54,7 +54,7 @@ internal struct ValueMutex<T> : IValueWrapper<T>
             return false;
         }
 
-        this.NotSynchronizedValue = value;
+        NotSynchronizedValue = value;
         @lock = 2;
         return true;
     }

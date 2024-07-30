@@ -37,6 +37,7 @@ internal static class SharedPoolHelpers
         ref GCHandle end2 = ref Unsafe.Add(ref current, allThreadLocalCount);
         while (Unsafe.IsAddressLessThan(ref current, ref end2))
         {
+            Debug.Assert(current.Target is null or SharedThreadLocalElementReference);
             SharedThreadLocalElementReference? sharedThreadLocalElement = Unsafe.As<SharedThreadLocalElementReference?>(current.Target);
             if (sharedThreadLocalElement is not null)
             {

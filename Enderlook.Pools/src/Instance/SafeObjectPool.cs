@@ -79,7 +79,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     array = new ValueAtom<T>[value];
                 else
 #endif
-                array = new ValueMutex<T>[value];
+                    array = new ValueMutex<T>[value];
             }
             else
                 array = new ObjectWrapper[value];
@@ -194,7 +194,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             reserve = new ObjectWrapper[capacity];
             array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         }
-        GCCallback<T> _ = new(this);
+        GCCallbackObject<T> _ = new(this);
     }
 
     /// <summary>
@@ -280,7 +280,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
 #if NETSTANDARD2_1_OR_GREATER || NET5_0_OR_GREATER
             if (Unsafe.SizeOf<ValueAtom<T>>() == sizeof(long) && !RuntimeHelpers.IsReferenceOrContainsReferences<T>())
             {
-                if (!firstElementAtomic.NotSynchronizedHasValue || firstElementAtomic.TryPopValue(out T value))
+                if (!firstElementAtomic.NotSynchronizedHasValue || !firstElementAtomic.TryPopValue(out T value))
                 {
                     // Next, we look at all remaining elements.
                     Debug.Assert(array is ValueAtom<T>[]);
@@ -293,7 +293,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                         // We will interlock only when we have a candidate.
                         // In a worst case we may miss some recently returned objects.
                         if (current.NotSynchronizedHasValue && current.TryPopValue(out value))
-                            break;
+                            return value;
                         current = ref Unsafe.Add(ref current, 1);
                     }
 
@@ -305,7 +305,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             else
 #endif
             {
-                if (!firstElementNotAtomic.NotSynchronizedHasValue || firstElementNotAtomic.TryPopValue(out T value))
+                if (!firstElementNotAtomic.NotSynchronizedHasValue || !firstElementNotAtomic.TryPopValue(out T value))
                 {
                     // Next, we look at all remaining elements.
                     Debug.Assert(array is ValueMutex<T>[]);
@@ -318,7 +318,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                         // We will interlock only when we have a candidate.
                         // In a worst case we may miss some recently returned objects.
                         if (current.NotSynchronizedHasValue && current.TryPopValue(out value))
-                            break;
+                            return value;
                         current = ref Unsafe.Add(ref current, 1);
                     }
 
@@ -346,7 +346,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                     Debug.Assert(current.Value is null or T);
                     element = Unsafe.As<object?, T?>(ref current.Value);
                     if (element is not null && ReferenceEquals(element, Interlocked.CompareExchange(ref current.Value, null, element)))
-                        break;
+                        return element;
                     current = ref Unsafe.Add(ref current, 1);
                 }
 
@@ -468,6 +468,8 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             firstElementNotAtomic.Clear(); // We always trim the first element.
         }
 
+        int itemsLength = GetArrayLenght();
+
         int arrayTrimMilliseconds;
         int arrayTrimCount;
         int reserveTrimMilliseconds;
@@ -475,7 +477,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         if (force)
         {
             // Forces to clear everything regardless of time.
-            arrayTrimCount = GetArrayLenght();
+            arrayTrimCount = itemsLength;
             arrayTrimMilliseconds = 0;
             reserveTrimMilliseconds = 0;
             reserveTrimPercentage = 1;
@@ -486,7 +488,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             {
                 case Utils.MemoryPressure.High:
                     // Forces to clear everything regardless of time.
-                    arrayTrimCount = GetArrayLenght();
+                    arrayTrimCount = itemsLength;
                     arrayTrimMilliseconds = ArrayHighTrimAfterMilliseconds;
                     reserveTrimMilliseconds = 0;
                     reserveTrimPercentage = 1;
@@ -564,7 +566,6 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
 
         int newReserveCount;
         int newReserveLength;
-        int itemsLength = GetArrayLenght();
         Array reserve_ = Utils.NullExchange(ref reserve);
         int oldReserveCount = reserveCount;
         int oldReserveLength = reserve_.Length;
