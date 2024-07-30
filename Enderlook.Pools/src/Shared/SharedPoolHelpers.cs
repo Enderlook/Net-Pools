@@ -146,12 +146,27 @@ internal static class SharedPoolHelpers
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryPop<T>(this ref SharedPerCoreStack stack, out T element)
+    public static int TryPop<T>(this ref SharedPerCoreStack stack, out T element, bool force)
     {
         Debug.Assert(stack.Array is T?[]);
         T?[] items = Unsafe.As<T?[]>(stack.Array);
 
-        int count = Utils.MinusOneExchange(ref stack.Count);
+        int count;
+        if (force)
+            count = Utils.MinusOneExchange(ref stack.Count);
+        else
+        {
+            count = Interlocked.Exchange(ref stack.Count, -1);
+            if (count == -1)
+            {
+#if NET5_0_OR_GREATER
+                Unsafe.SkipInit(out element);
+#else
+                element = default;
+#endif
+                return -1;
+            }
+        }
 
         int newCount = count - 1;
         if (unchecked((uint)newCount < (uint)items.Length))
@@ -165,7 +180,7 @@ internal static class SharedPoolHelpers
 #endif
                 slot = default;
             stack.Count = newCount;
-            return true;
+            return 1;
         }
 
 #if NET5_0_OR_GREATER
@@ -175,7 +190,7 @@ internal static class SharedPoolHelpers
 #endif
 
         stack.Count = count;
-        return false;
+        return -2;
     }
 
     public static bool FillFromGlobalReserve<T>(this ref SharedPerCoreStack stack, [NotNullWhen(true)] out T? element, ref T?[]? globalReserve, ref int globalReserveCount)

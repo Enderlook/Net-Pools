@@ -74,19 +74,48 @@ internal sealed class SharedValuePool<TElement, THelper> : ObjectPool<TElement>
         // Try to pop from the associated stack first.
         // If that fails, try with other stacks.
         int index = SharedPoolHelpers.GetStartingIndex();
+        bool failedAttempt = false;
         for (int i = 0; i < perCoreStacks.Length; i++)
         {
             Debug.Assert(index < perCoreStacks.Length);
             // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
-            if (Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out TElement element2))
+            int value = Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out TElement element2, false);
+            if (value > 0)
                 return element2;
+            failedAttempt |= value == -1;
 
             if (++index == perCoreStacks.Length)
                 index = 0;
         }
 
+        if (failedAttempt)
+            // If failed to pop from stack due to contention, try again but this time force the pop, which will wait for the lock to be released.
+            return SlowPathForce();
+
         // Next, try to fill a per-core stack with objects from the global reserve.
         return SlowPath();
+
+        static TElement SlowPathForce()
+        {
+            SharedPerCoreStack[] perCoreStacks = SharedPool<TElement, TElement>.PerCoreStacks;
+            ref SharedPerCoreStack perCoreStacksRoot = ref Utils.GetArrayDataReference(perCoreStacks);
+            // Try to pop from the associated stack first.
+            // If that fails, try with other stacks.
+            int index = SharedPoolHelpers.GetStartingIndex();
+            for (int i = 0; i < perCoreStacks.Length; i++)
+            {
+                Debug.Assert(index < perCoreStacks.Length);
+                // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
+                if (Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out TElement element2, true) > 0)
+                    return element2;
+
+                if (++index == perCoreStacks.Length)
+                    index = 0;
+            }
+
+            // Next, try to fill a per-core stack with objects from the global reserve.
+            return SlowPath();
+        }
 
         static TElement SlowPath()
         {
