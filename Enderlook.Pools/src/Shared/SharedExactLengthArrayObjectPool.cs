@@ -190,24 +190,58 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
         // Try to pop from the associated stack first.
         // If that fails, try with other stacks.
         int index = SharedPoolHelpers.GetStartingIndex();
+        bool failedAttempt = false;
         for (int i = 0; i < perCoreStacks.Length; i++)
         {
             Debug.Assert(index < perCoreStacks.Length);
             // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
-            if (Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2))
+            int value = Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2, failedAttempt);
+            if (value > 0)
             {
                 Debug.Assert(element2.Value is T[]);
                 T[]? element3 = Unsafe.As<object?, T[]?>(ref element2.Value);
                 Debug.Assert(element3 is not null);
                 return element3;
             }
+            failedAttempt |= value == -1;
 
             if (++index == perCoreStacks.Length)
                 index = 0;
         }
 
+        if (failedAttempt)
+            return SlowPathForce();
+
         // Next, try to fill a per-core stack with objects from the global reserve.
         return SlowPath();
+
+        T[] SlowPathForce()
+        {
+            // Next, try to get an element from one of the per-core stacks.
+            SharedPerCoreStack[] perCoreStacks = PerCoreStacks;
+            ref SharedPerCoreStack perCoreStacksRoot = ref Utils.GetArrayDataReference(perCoreStacks);
+            // Try to pop from the associated stack first.
+            // If that fails, try with other stacks.
+            int index = SharedPoolHelpers.GetStartingIndex();
+            for (int i = 0; i < perCoreStacks.Length; i++)
+            {
+                Debug.Assert(index < perCoreStacks.Length);
+                // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
+                if (Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2, true) > 0)
+                {
+                    Debug.Assert(element2.Value is T[]);
+                    T[]? element3 = Unsafe.As<object?, T[]?>(ref element2.Value);
+                    Debug.Assert(element3 is not null);
+                    return element3;
+                }
+
+                if (++index == perCoreStacks.Length)
+                    index = 0;
+            }
+
+            // Next, try to fill a per-core stack with objects from the global reserve.
+            return SlowPath();
+        }
 
         T[] SlowPath()
         {

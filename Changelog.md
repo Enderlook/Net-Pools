@@ -1,7 +1,8 @@
 # Changelog
 
 ## 
-- Fix accidental double allocation in `ExactLengthArrayPool.OfLength(int)`.
+- Fix accidental double allocation in `ExactLengthArrayPool.OfL
+- Micro optimization by trying to avoid contention when doing `ObjectPool<T>.Shared.Rent()`.
 
 ## v0.3.0
 - Fix documentation typos.
