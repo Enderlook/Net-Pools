@@ -1,6 +1,9 @@
 # Changelog
 
-##
+## 
+- Fix accidental double allocation in `ExactLengthArrayPool.OfLength(int)`.
+
+## v0.3.0
 - Fix documentation typos.
 - Fix accidental free of some objects when returned.
 - Improve exception messages.

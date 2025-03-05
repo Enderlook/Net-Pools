@@ -72,7 +72,14 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
             Interlocked.CompareExchange(ref this.adapters, adapters, null);
             adapters = this.adapters;
             lock (adapters)
+            {
+                if (adapters.TryGetValue(length, out ObjectPool<T[]>? pool))
+                {
+                    Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
+                    return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
+                }
                 return Fallback2();
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
