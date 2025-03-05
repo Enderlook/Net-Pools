@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net5;net6;net7;net8</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;net5;net6;net7;net8;net9</TargetFrameworks>
     <OutputType>Library</OutputType>
     <PackageId>Enderlook.Pools</PackageId>
     <AssemblyName>Enderlook.Pools</AssemblyName>
@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/Enderlook/Net-Pools</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Version>0.3.0</Version>
-    <LangVersion>12</LangVersion>
+    <LangVersion>13</LangVersion>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Nullable>enable</Nullable>
