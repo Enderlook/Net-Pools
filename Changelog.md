@@ -4,6 +4,7 @@
 - Fix accidental double allocation in `ExactLengthArrayPool.OfLength(int)`.
 - Fix accidental allocation in `ExactLengthArrayPool.SharedOfLength(int)` and methods `Rent()` and `Return()` of that returned value.
 - Micro optimization by trying to avoid contention when doing `ObjectPool<T>.Shared.Rent()`.
+- Optimize `ExactLengthArrayPool.SharedOfLength(int)` and methods `Rent()` and `Return()` of that returned value when using consecutive repeated same length.
 
 ## v0.3.0
 - Fix documentation typos.
