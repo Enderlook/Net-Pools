@@ -119,7 +119,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
     public override T[] Rent()
     {
-        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ?? [];
+        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ??= new();
         int length = Length;
 
 #if NET6_0_OR_GREATER
@@ -277,7 +277,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
         if (element.Length != length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
         if (length == 0) return;
 
-        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ?? [];
+        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ??= new();
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
@@ -307,7 +307,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     {
         int length = element.Length;
         if (length == 0) return;
-        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ?? [];
+        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ??= new();
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
         // preferring to keep the latest one in thread local field for better locality.
@@ -391,7 +391,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
 
     public static SharedExactLengthArrayObjectPool<T> GetPool(int length)
     {
-        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ?? new();
+        Dictionary<int, (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)> threadLocals = ThreadLocals ??= new();
 #if NET6_0_OR_GREATER
         ref (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(threadLocals, length, out bool exists);
         return exists ? tuple.Pool : InitializeThreadLocalElementStatic(length, ref tuple).Pool;
