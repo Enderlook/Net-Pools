@@ -25,7 +25,7 @@
 - Support pooling default elements in `SafeValueObjectPool<T>`.
 - Replace constructors in `FastObjectPool<T>` and `SafeValueObjectPool<T>` and add init-only properties to configure it.
 - Support configuring if its reserve (previously known as cold capacity) can be resized in `FastObjectPool<T>` and `SafeValueObjectPool<T>`.
-- Support disposing and custom dispoing in `SafeValueObjectPool<T>`.
+- Support disposing and custom disposing in `SafeValueObjectPool<T>`.
 - Fix `Trim(bool)` in `ObjectPool<T>.Shared` not trimming correctly values.
 - Support disposing in `ObjectPool<T>.Shared`.
 - Add `ExactLengthArrayPool<T>`, `SafeExactLengthArrayPoool<T>` and `SafeExactLengthArrayObjectPool<T>`.
@@ -50,7 +50,7 @@
 
 ## v0.2.0
 - Remove `class` constraint in generic parameter `T` in `ObjectPool<T>`.
-- Add `DynamicValueObjectPool<T>`. 
+- Add `DynamicValueObjectPool<T>`.
 - Improve documentation of `ObjectPool<T>`.
 - Rename parameter `obj` to `element` of `ObjectPool<T>.Return(T obj)`.
 
