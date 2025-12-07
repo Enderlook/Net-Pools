@@ -29,7 +29,11 @@ internal sealed class SharedExactLengthArrayPool<T> : ExactLengthArrayPool<T>
     }
 
     /// <inheritdoc cref="ExactLengthArrayPool{T}.OfLength(int)"/>
+#if NET5_0_OR_GREATER
+    public override SharedExactLengthArrayObjectPool<T> OfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
+#else
     public override ObjectPool<T[]> OfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
+#endif
 
     /// <summary>
     /// Rents an array of the specified length.
