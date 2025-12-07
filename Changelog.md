@@ -1,6 +1,7 @@
 # Changelog
 
 ## WIP
+- Reduce generic instantiations internally produced by `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)`.
 
 ## v0.3.1
 - Fix accidental double allocation in `ExactLengthArrayPool.OfLength(int)`.
