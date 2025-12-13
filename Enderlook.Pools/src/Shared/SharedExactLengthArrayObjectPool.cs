@@ -349,66 +349,44 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     public static SharedExactLengthArrayObjectPool<T> GetPool(int length)
     {
         ref ThreadLocal threadLocals = ref ThreadLocals;
-        SharedExactLengthArrayObjectPool<T> pool = Unsafe.As<SharedExactLengthArrayObjectPool<T>>(threadLocals.Last.Pool);
-        if (pool?.Length == length)
-            return pool;
-
-        Dictionary<int, (object Element, object Pool)> threadLocals_ = threadLocals.Pools ?? MakeLocalPool();
-#if NET6_0_OR_GREATER
-        ref (object Element, object Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(threadLocals_, length, out bool exists);
-        return exists
-            ? Unsafe.As<SharedExactLengthArrayObjectPool<T>>((threadLocals.Last = tuple).Pool)
-            : InitializeThreadLocalElementStaticAndSetLast(length, ref tuple).Pool;
-#else
-        if (threadLocals_.TryGetValue(length, out (object Element, object Pool) tuple))
-            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>((threadLocals.Last = tuple).Pool);
-        else
-            return InitializeThreadLocalElementStaticAndSetLast(length).Pool;
-#endif
+        ref (object Element, object Pool) slot = ref GetSlot(ref threadLocals, length);
+        if (Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool)?.Length == length)
+            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool);
+        return Cache(length);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static Dictionary<int, (object Element, object Pool)> MakeLocalPool()
-            => ThreadLocals.Pools = new();
+        static SharedExactLengthArrayObjectPool<T> Cache(int length)
+        {
+            ref ThreadLocal threadLocals = ref ThreadLocals;
+            ref (object Element, object Pool) slot = ref GetSlot(ref threadLocals, length);
+            Dictionary<int, (object Element, object Pool)> threadLocals_ = threadLocals.Pools ??= new();
+#if NET6_0_OR_GREATER
+            ref (object Element, object Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(threadLocals_, length, out bool exists);
+            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (exists
+                ? tuple
+                : tuple = InitializeThreadLocalElementStaticAndSetLast(length))
+            ).Pool);
+#else
+            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (threadLocals_.TryGetValue(length, out (object Element, object Pool) tuple)
+                ? tuple
+                : InitializeThreadLocalElementStaticAndSetLast(length))
+            ).Pool);
+#endif
+        }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool) InitializeThreadLocalElementStaticAndSetLast(int length
-#if NET6_0_OR_GREATER
-        , ref (object Element, object Pool) tuple
-#endif
-        )
+    private static (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool) InitializeThreadLocalElementStaticAndSetLast(int length)
     {
         SharedExactLengthArrayObjectPool<T> pool = GetOrCreateGlobalPool(length);
-        SharedThreadLocalElementReference threadLocalElement = pool.InitializeThreadLocalElement(
-#if NET6_0_OR_GREATER
-            ref tuple
-#else
-            length
-#endif
-        );
-        ThreadLocals.Last = (threadLocalElement, pool);
-        return (threadLocalElement, pool);
+        SharedThreadLocalElementReference element = pool.InitializeThreadLocalElement();
+        Debug.Assert(ThreadLocals.Pools is not null);
+        ThreadLocals.Pools[length] = (element, pool);
+        return (element, pool);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private SharedThreadLocalElementReference InitializeThreadLocalElement(
-#if NET6_0_OR_GREATER
-        ref (object Element, object Pool) tuple
-#else
-        int length
-#endif
-        )
+    private SharedThreadLocalElementReference InitializeThreadLocalElement()
     {
         SharedThreadLocalElementReference slot = new();
-
-#if NET6_0_OR_GREATER
-        tuple.Element = slot;
-        tuple.Pool = this;
-#else
-        Dictionary<int, (object Element, object Pool)>? threadLocals = ThreadLocals.Pools;
-        Debug.Assert(threadLocals is not null);
-        threadLocals.Add(length, (slot, this));
-#endif
 
         GCHandle[]? allThreadLocalElements = Utils.NullExchange(ref AllThreadLocalElements);
 
@@ -487,63 +465,104 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ref (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool) GetOrCreateLocal(int length)
     {
-        ref ThreadLocal local = ref ThreadLocals;
-        if (Unsafe.As<SharedExactLengthArrayObjectPool<T>>(local.Last.Pool)?.Length != length)
+        ref (object Element, object Pool) slot = ref GetSlot(ref ThreadLocals, length);
+        if (Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool)?.Length != length)
+            return ref Cache(length);
+        return ref Unsafe.As<(object, object), (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)>(ref slot);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static ref (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool) Cache(int length)
         {
+            ref ThreadLocal local = ref ThreadLocals;
+            ref (object Element, object Pool) slot = ref GetSlot(ref local, length);
             Dictionary<int, (object Element, object Pool)> pools = local.Pools ??= new();
 #if NET6_0_OR_GREATER
             ref (object Element, object Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(pools, length, out bool exists);
-            if (exists)
-                local.Last = tuple;
-            else
-                InitializeThreadLocalElementStaticAndSetLast(length, ref tuple);
+            slot = exists ? tuple : tuple = InitializeThreadLocalElementStaticAndSetLast(length);
 #else
-            if (pools.TryGetValue(length, out (object Element, object Pool) tuple2))
-                local.Last = tuple2;
-            else
-                InitializeThreadLocalElementStaticAndSetLast(length);
+            slot = pools.TryGetValue(length, out (object Element, object Pool) tuple) ? tuple : InitializeThreadLocalElementStaticAndSetLast(length);
 #endif
+            return ref Unsafe.As<(object, object), (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)>(ref slot);
         }
-        return ref Unsafe.As<(object, object), (SharedThreadLocalElementReference Element, SharedExactLengthArrayObjectPool<T> Pool)>(ref local.Last);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static SharedThreadLocalElementReference GetOrCreateLocal(SharedExactLengthArrayObjectPool<T> pool)
     {
-        ref ThreadLocal local = ref ThreadLocals;
         int length = pool.Length;
-        if (!ReferenceEquals(local.Last.Pool, pool))
+        ref (object Element, object Pool) slot = ref GetSlot(ref ThreadLocals, length);
+        if (!ReferenceEquals(slot.Pool, pool))
+            return Cache(pool);
+        return Unsafe.As<SharedThreadLocalElementReference>(slot.Element);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static SharedThreadLocalElementReference Cache(SharedExactLengthArrayObjectPool<T> pool)
         {
+            ref ThreadLocal local = ref ThreadLocals;
+            int length = pool.Length;
+            ref (object Element, object Pool) slot = ref GetSlot(ref ThreadLocals, length);
             Dictionary<int, (object Element, object Pool)> pools = local.Pools ??= new();
 #if NET6_0_OR_GREATER
             ref (object Element, object Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(pools, length, out bool exists);
-            if (exists)
-            {
-                local.Last = tuple;
-                return Unsafe.As<SharedThreadLocalElementReference>(tuple.Element);
-            }
-            else
-                local.Last = InitializeThreadLocalElementStaticAndSetLast(length, ref tuple);
+            return Unsafe.As<SharedThreadLocalElementReference>((slot = (exists ? tuple : tuple = InitializeThreadLocalElementStaticAndSetLast(length))).Element);
 #else
             if (pools.TryGetValue(length, out (object Element, object Pool) tuple))
             {
-                local.Last = tuple;
+                slot = tuple;
                 return Unsafe.As<SharedThreadLocalElementReference>(tuple.Element);
             }
             else
             {
-                SharedThreadLocalElementReference element = pool.InitializeThreadLocalElement(length);
-                local.Last = (element, pool);
+                SharedThreadLocalElementReference element = pool.InitializeThreadLocalElement();
+                pools.Add(length, (element, pool));
+                slot = (element, pool);
                 return element;
             }
 #endif
         }
-        return Unsafe.As<SharedThreadLocalElementReference>(local.Last.Element);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref (object Element, object Pool) GetSlot(ref ThreadLocal local, int length)
+    {
+        int index = (length ^ (length >> 4)) & (ThreadLocal.MostUsedLength - 1);
+#if NET8_0_OR_GREATER
+        return ref local.MostUsed[index];
+#else
+        return ref Unsafe.As<ThreadLocalCache, (object Element, object Pool)>(ref local.MostUsed);
+#endif
     }
 }
 
 internal struct ThreadLocal
 {
+    public const int MostUsedLength = 16; // Arbitrary power of 2.
+
     public Dictionary<int, (object Element, object Pool)>? Pools;
-    public (object Element, object Pool) Last;
+    public ThreadLocalCache MostUsed;
+}
+
+#if NET8_0_OR_GREATER
+[InlineArray(ThreadLocal.MostUsedLength)]
+#endif
+internal struct ThreadLocalCache
+{
+    private (object Element, object Pool) E1;
+#if !NET8_0_OR_GREATER
+    private (object Element, object Pool) E2;
+    private (object Element, object Pool) E3;
+    private (object Element, object Pool) E4;
+    private (object Element, object Pool) E5;
+    private (object Element, object Pool) E6;
+    private (object Element, object Pool) E7;
+    private (object Element, object Pool) E8;
+    private (object Element, object Pool) E9;
+    private (object Element, object Pool) E10;
+    private (object Element, object Pool) E11;
+    private (object Element, object Pool) E12;
+    private (object Element, object Pool) E13;
+    private (object Element, object Pool) E14;
+    private (object Element, object Pool) E15;
+    private (object Element, object Pool) E16;
+#endif
 }
