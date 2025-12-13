@@ -23,7 +23,7 @@ internal sealed class SharedExactLengthArrayPool<T> : ExactLengthArrayPool<T>
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
             count += current.ApproximateCount();
-            current = ref Unsafe.Add(ref end, 1);
+            current = ref Unsafe.Add(ref current, 1);
         }
         return count;
     }
@@ -65,7 +65,7 @@ internal sealed class SharedExactLengthArrayPool<T> : ExactLengthArrayPool<T>
         while (Unsafe.IsAddressLessThan(ref current, ref end))
         {
             current.Trim(force);
-            current = ref Unsafe.Add(ref end, 1);
+            current = ref Unsafe.Add(ref current, 1);
         }
     }
 }
