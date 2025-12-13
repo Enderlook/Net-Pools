@@ -512,7 +512,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     {
         ref ThreadLocal local = ref ThreadLocals;
         int length = pool.Length;
-        if (ReferenceEquals(local.Last.Pool, pool))
+        if (!ReferenceEquals(local.Last.Pool, pool))
         {
             Dictionary<int, (object Element, object Pool)> pools = local.Pools ??= new();
 #if NET6_0_OR_GREATER
