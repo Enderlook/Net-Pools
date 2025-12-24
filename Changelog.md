@@ -1,6 +1,7 @@
 # Changelog
 
 ## WIP
+
 - Reduce generic instantiations internally produced by `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)`.
 - Fix error in `ExactLengthArrayPool<T>.Shared.ApproximateCount()` and `ExactLengthArrayPool<T>.Shared.Trim(bool)`.
 - Fix `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)` returned incorrect array lengths.
@@ -10,12 +11,14 @@
 - Fix `SafeExactLengthArrayPool<T>` creating non-configured instances of `SafeExactLengthArrayObjectPool<T>`.
 
 ## v0.3.1
+
 - Fix accidental double allocation in `ExactLengthArrayPool<T>.OfLength(int)`.
 - Fix accidental allocation in `ExactLengthArrayPool<T>.SharedOfLength(int)` and methods `Rent()` and `Return()` of that returned value.
 - Micro optimization by trying to avoid contention when doing `ObjectPool<T>.Shared.Rent()`.
 - Optimize `ExactLengthArrayPool<T>.SharedOfLength(int)` and methods `Rent()` and `Return()` of that returned value when using consecutive repeated same length.
 
 ## v0.3.0
+
 - Fix documentation typos.
 - Fix accidental free of some objects when returned.
 - Improve exception messages.
@@ -38,6 +41,7 @@
 - Add `ExactLengthArrayPool<T>`, `SafeExactLengthArrayPoool<T>` and `SafeExactLengthArrayObjectPool<T>`.
 
 ## v0.2.3
+
 - Improve documentation.
 - Fix documentation typos.
 - Fix error when using value types without parameterless constructor.
@@ -48,20 +52,24 @@
 - Fix `ObjectPool<T>.Shared` throwing when `T` is a value type.
 
 ## v0.2.2
+
 - Add support for trimming.
 
 ## v0.2.1
+
 - Fix object references not being cleaned correctly in `ObjectPool<T>.Shared` where `T` is a reference type.
 - Fix `ObjectPool<T>.Shared.Return(T obj)` storing twice the same object.
 - Minimal performance improvements in `ObjectPool<T>.Shared` where `T` is an unmanaged value type.
 
 ## v0.2.0
+
 - Remove `class` constraint in generic parameter `T` in `ObjectPool<T>`.
 - Add `DynamicValueObjectPool<T>`.
 - Improve documentation of `ObjectPool<T>`.
 - Rename parameter `obj` to `element` of `ObjectPool<T>.Return(T obj)`.
 
 ## v0.1.1
+
 - Fix documentation
 - Specify that `ObjectPool<T>.ApproximateCount()` must return `-1` if the operation is not supported.
 - Specify that `ObjectPool<T>.Return(T obj)` must never fail silently if `obj` is `null`.
@@ -69,4 +77,5 @@
 - Fix `ThreadLocalOverPerLockedStacksObjectPool<T>.Rent()` (implementation behind `ObjectPool<T>.Shared.Rent()`) throwing when getting elements from global reserve.
 
 ## v0.1.0
+
 Initial release.
