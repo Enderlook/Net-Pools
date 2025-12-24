@@ -64,7 +64,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// This region of the pool support concurrent access.<br/>
     /// The capacity should preferably be not greater than <c><see cref="Environment.ProcessorCount"/> * 2</c>, since it's fully iterated before accessing the reserve.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than 1.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than <c>1</c>.</exception>
     public int Capacity
     {
         get => GetArrayLenght() + 1;

@@ -29,7 +29,7 @@ public abstract class ObjectPool<T>
     /// This value is not accurate and may be lower or higher than the actual count.<br/>
     /// This is primary used for debugging purposes.
     /// </summary>
-    /// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
+    /// <returns>Approximate count of elements in the pool. If this operation is not supported, return <c>-1</c> instead of throwing.</returns>
     public abstract int ApproximateCount();
 
     /// <summary>
