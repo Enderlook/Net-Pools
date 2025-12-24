@@ -11,6 +11,10 @@ internal static class Utils
     // Never change this value of `MinusOneExchange` will change.
     public const int LOCKED = -1;
 
+    public const int LEASE_USABLE = 0;
+    public const int LEASE_LOCK = 1;
+    public const int LEASE_DISPOSED = 2;
+
     public enum MemoryPressure
     {
         Low,
@@ -102,6 +106,23 @@ internal static class Utils
         }
     }
 
+#if NET7_0_OR_GREATER
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void OwnedLock(ref int value)
+    {
+        SpinWait spin = new();
+        while (true)
+        {
+            int v = Interlocked.CompareExchange(ref value, LEASE_LOCK, LEASE_USABLE);
+            if (v == LEASE_DISPOSED)
+                ThrowObjectDisposedException_this();
+            if (v == LEASE_USABLE)
+                break;
+            spin.SpinOnce();
+        }
+    }
+#endif
+
     [DoesNotReturn]
     public static void ThrowArgumentNullException_Array()
         => throw new ArgumentNullException("array");
@@ -122,4 +143,7 @@ internal static class Utils
 
     public static void ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne()
         => throw new ArgumentOutOfRangeException("capacity", "Can't be lower than 1.");
+
+    public static void ThrowObjectDisposedException_this()
+        => throw new ObjectDisposedException("this");
 }

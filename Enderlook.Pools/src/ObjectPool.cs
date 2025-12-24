@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Enderlook.Pools;
 
@@ -9,7 +11,15 @@ namespace Enderlook.Pools;
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ObjectPool<T>
+#if NET7_0_OR_GREATER
+    : IReturnable<T>
+#endif
 {
+#if NET7_0_OR_GREATER
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    void IReturnable<T>.Return(T element, int state) => Return(element);
+#endif
+
     /// <summary>
     /// Gets an approximate count of the objects stored in the pool.<br/>
     /// This value is not accurate and may be lower or higher than the actual count.<br/>
@@ -88,4 +98,23 @@ public static class ObjectPool
         /// <exception cref="MissingMethodException">Thrown when the <typeparamref name="T"/> is a reference type and has no public parameterless constructor.</exception>
         public static T CreateInstance() => ObjectPoolHelper<T>.Create();
     }
+
+#if NET7_0_OR_GREATER
+    extension<T>(ObjectPool<T> pool)
+    {
+        /// <summary>
+        /// Rent an element from the pool.<br/>
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+        /// </summary>
+        /// <param name="ownedObject">A marker that manages the lease, this location should never be mutated as it's used by the lease to determine if it was disposed.</param>
+        /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ObjectLease<T> RentLease([UnscopedRef] out ObjectOwner<T> ownedObject)
+        {
+            ownedObject = new(pool.Rent());
+            return new(pool, ref ownedObject);
+        }
+    }
+#endif
 }

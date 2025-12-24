@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -11,8 +12,49 @@ namespace Enderlook.Pools;
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
+#if NET7_0_OR_GREATER
+    , IReturnable<T[]>
+#endif
 {
     private protected Dictionary<int, ObjectPool<T[]>>? adapters;
+
+#if NET7_0_OR_GREATER
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    void IReturnable<T[]>.Return(T[] element, int state) => Return(element, state == 1);
+
+    /// <summary>
+    /// Rent an element from the pool.<br/>
+    /// If the pool is empty, instantiate a new element.<br/>
+    /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+    /// </summary>
+    /// <param name="minimumLength">The minimum length of the array needed.</param>
+    /// <param name="ownedObject">A marker that manages the lease, this location should never be mutated as it's used by the lease to determine if it was disposed.</param>
+    /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ObjectLease<T[]> RentLease(int minimumLength, [UnscopedRef] out ObjectOwner<T[]> ownedObject)
+    {
+        ownedObject = new(Rent(minimumLength), 0);
+        return new(this, ref ownedObject);
+    }
+
+    /// <summary>
+    /// Rent an element from the pool.<br/>
+    /// If the pool is empty, instantiate a new element.<br/>
+    /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+    /// </summary>
+    /// <param name="minimumLength">The minimum length of the array needed.</param>
+    /// <param name="clearOnReturn"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.
+    /// </param>
+    /// <param name="ownedObject">A marker that manages the lease, this location should never be mutated as it's used by the lease to determine if it was disposed.</param>
+    /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ObjectLease<T[]> RentLease(int minimumLength, bool clearOnReturn, [UnscopedRef] out ObjectOwner<T[]> ownedObject)
+    {
+        ownedObject = new(Rent(minimumLength), clearOnReturn ? 1 : 0);
+        return new(this, ref ownedObject);
+    }
+#endif
 
     /// <summary>
     /// Retrieves a shared <see cref="ExactLengthArrayPool{T}"/> instance.<br/>
