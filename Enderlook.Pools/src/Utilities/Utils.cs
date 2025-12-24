@@ -63,6 +63,20 @@ internal static class Utils
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T Read<T>(ref T? slot)
+        where T : class
+    {
+        SpinWait spinWait = new();
+        while (true)
+        {
+            T? current = slot;
+            if (current is not null)
+                return current;
+            spinWait.SpinOnce();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MinusOneExchange(ref int slot)
     {
         SpinWait spinWait = new();

@@ -97,7 +97,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
         get
         {
-            Array? reserve_ = Utils.NullExchange(ref reserve);
+            Array? reserve_ = Utils.Read(ref reserve);
             int count;
             if (typeof(T).IsValueType)
             {
@@ -109,7 +109,6 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 Debug.Assert(reserve_ is ObjectWrapper[]);
                 count = Unsafe.As<ObjectWrapper[]>(reserve_).Length;
             }
-            reserve = reserve_;
             return count;
         }
         init

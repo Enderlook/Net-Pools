@@ -77,13 +77,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is negative.</exception>
     public int Reserve
     {
-        get
-        {
-            ObjectWrapper[] reserve_ = Utils.NullExchange(ref reserve);
-            int count = reserve_.Length;
-            reserve = reserve_;
-            return count;
-        }
+        get => Utils.Read(ref reserve).Length;
         init
         {
             if (value < 0) Utils.ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative();
