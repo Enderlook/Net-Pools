@@ -29,7 +29,7 @@ T>
                 Factory = () => default!;
             }
             else
-                Factory = () => throw new MissingMethodException($"No public parameterless constructor defined for type '{typeof(T)}'.");
+                Factory = () => throw new MissingMethodException($"No public parameterless constructor defined for a reference type '{typeof(T)}'.");
             return;
         }
 
