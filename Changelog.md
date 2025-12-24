@@ -6,6 +6,7 @@
 - Fix `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)` returned incorrect array lengths.
 - Improve caching performance in `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)` for common lengths.
 - Avoid contention when calling `FastObjectPool<T>.Reserve` and `SafeObjectPool<T>.Reserve`.
+- Replace `IsReserveDynamic` with `IsReserveFixed` in `FastObjectPool<T>`, `SafeObjectPool<T>`, `SafeExactLengthArrayObjectPool<T>` and `SafeExactLengthArrayPool<T>`.
 
 ## v0.3.1
 - Fix accidental double allocation in `ExactLengthArrayPool<T>.OfLength(int)`.

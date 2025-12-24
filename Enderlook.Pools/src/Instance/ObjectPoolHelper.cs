@@ -298,7 +298,7 @@ internal static class ObjectPoolHelper
         int newCount = reserveCount + 1 + (items.Length / 2);
         if (newCount > reserve.Length)
         {
-            if (self.IsReserveDynamic)
+            if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
             else if (reserveCount + 1 == reserve.Length)
             {
@@ -364,7 +364,7 @@ internal static class ObjectPoolHelper
         int newCount = reserveCount + 1 + (items.Length / 2);
         if (newCount > reserve.Length)
         {
-            if (self.IsReserveDynamic)
+            if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
             else if (reserveCount + 1 == reserve.Length)
             {
@@ -409,7 +409,7 @@ internal static class ObjectPoolHelper
         int newCount = reserveCount + 1 + (items.Length / 2);
         if (newCount > reserve.Length)
         {
-            if (self.IsReserveDynamic)
+            if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
             else if (reserveCount + 1 == reserve.Length)
             {

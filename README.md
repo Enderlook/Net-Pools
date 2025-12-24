@@ -117,9 +117,9 @@ namespace Enderlook.Pools
         public int Reserve { get; init; } = Environment.ProcessorCount * 2;
 
         /// <summary>
-        /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+        /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveDynamic { get; init; } = true;
+        public bool IsReserveFixed { get; init; } = true;
 
         /// <summary>
         /// Delegate which instantiates new objects.<br/>
@@ -165,9 +165,9 @@ namespace Enderlook.Pools
         public int Reserve { get; init; } = Environment.ProcessorCount * 2;
 
         /// <summary>
-        /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+        /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveDynamic { get; init; } = true;
+        public bool IsReserveFixed { get; init; } = true;
 
         /// <summary>
         /// If this value is not <see langword="null"/>, the callback will be executed on each element which is free from the pool.<br/>
@@ -226,10 +226,10 @@ namespace Enderlook.Pools
         public int Reserve { get; init; } = Environment.ProcessorCount * 2;
 
         /// <summary>
-        /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+        /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveDynamic { get; init; } = true;
-        
+        public bool IsReserveFixed { get; init; } = true;
+
         /// <summary>
         /// Creates a pool of exact length array.
         /// </summary>
@@ -315,9 +315,9 @@ namespace Enderlook.Pools
         public int Reserve { get; init; }
 
         /// <summary>
-        /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+        /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveDynamic { get; init; } = true;
+        public bool IsReserveFixed { get; init; } = true;
 
         /// <summary>
         /// Creates a new instance of the pool.

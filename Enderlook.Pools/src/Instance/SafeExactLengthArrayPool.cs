@@ -56,9 +56,9 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
     }
 
     /// <summary>
-    /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+    /// Determines if the reserve pool is not to grow nor shrink given its usage.
     /// </summary>
-    public bool IsReserveDynamic { get; init; } = true;
+    public bool IsReserveFixed { get; init; } = true;
 
     /// <summary>
     /// Creates a new instance of the pool.

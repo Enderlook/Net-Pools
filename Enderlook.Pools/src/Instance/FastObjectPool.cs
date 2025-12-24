@@ -86,9 +86,9 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     }
 
     /// <summary>
-    /// Determines if the reserve pool is allowed to grow and shrink given its usage.
+    /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
     /// </summary>
-    public bool IsReserveDynamic { get; init; } = true;
+    public bool IsReserveFixed { get; init; }
 
     /// <summary>
     /// Delegate which instantiates new objects.<br/>
@@ -309,7 +309,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         int itemsLength = items.Length;
         ObjectWrapper[]? reserve_ = Utils.NullExchange(ref reserve);
         int oldReserveLength = reserve_.Length;
-        bool isReserveDynamic = IsReserveDynamic;
+        bool isReserveFixed = IsReserveFixed;
         // Under high pressure, we don't wait time to trim, so we remove all objects in reserve.
         if (reserveTrimPercentage == 1)
         {
@@ -334,7 +334,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
                 newReserveCount = Math.Max(oldReserveCount - toRemove, 0);
 
                 // Since the global reserve has a dynamic size, we shrink the reserve if it gets too small.
-                if (isReserveDynamic && oldReserveLength / newReserveCount >= ReserveShrinkFactorToStart)
+                if (!isReserveFixed && oldReserveLength / newReserveCount >= ReserveShrinkFactorToStart)
                 {
                     Debug.Assert(ReserveShrinkFactorToStart >= ReserveShrinkFactor);
                     newReserveLength = Math.Min(oldReserveLength / ReserveShrinkFactor, itemsLength);
@@ -350,7 +350,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
             }
         }
 
-        newReserveLength = isReserveDynamic ? Math.Max(newReserveLength, Math.Min(oldReserveLength, itemsLength)) : oldReserveLength;
+        newReserveLength = isReserveFixed ? oldReserveLength : Math.Max(newReserveLength, Math.Min(oldReserveLength, itemsLength));
 
         // No need to clean the array if there is nothing to clear or we are gonna replace it with a new array anyway.
         if (newReserveLength != oldReserveLength)
@@ -434,7 +434,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         int newCount = currentReserveCount + 1 + (items.Length / 2);
         if (newCount > reserve_.Length)
         {
-            if (IsReserveDynamic)
+            if (!IsReserveFixed)
                 Array.Resize(ref reserve_, Math.Max(newCount, Math.Max(reserve_.Length * 2, 1)));
             else if (currentReserveCount + 1 == reserve_.Length)
             {
