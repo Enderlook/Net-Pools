@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -91,8 +92,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     public bool IsReserveFixed { get; init; }
 
     /// <summary>
-    /// Delegate which instantiates new objects.<br/>
-    /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
+    /// Delegate which instantiates new objects.
     /// </summary>
     public Func<T> Factory => factory;
 
@@ -100,21 +100,19 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     /// Creates a pool of objects.
     /// </summary>
     /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-    /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-    public FastObjectPool(Func<T>? factory)
+    /// For a default delegate use <see cref="FastObjectPool.CreateDefault{T}"/> or <see cref="ObjectPool.get_Factory{T}"/>.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+    /// <seealso cref="FastObjectPool.CreateDefault{T}"/>
+    /// <seealso cref="ObjectPool.get_Factory{T}"/>
+    public FastObjectPool(Func<T> factory)
     {
-        this.factory = factory ?? ObjectPoolHelper<T>.Factory;
+        if (factory is null) Utils.ThrowArgumentNullException_Factory();
+        this.factory = factory;
         int capacity = Environment.ProcessorCount * 2;
         array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         reserve = new ObjectWrapper[capacity];
         GCCallbackObject<T> _ = new(this);
     }
-
-    /// <summary>
-    /// Creates a pool of objects.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public FastObjectPool() : this(null) { }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
@@ -447,5 +445,29 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 
         reserveCount = newReserveCount;
         reserve = reserve_;
+    }
+}
+
+/// <summary>
+/// Utility methods for <see cref="FastObjectPool{T}"/>
+/// </summary>
+public static class FastObjectPool
+{
+    extension<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+    T>(FastObjectPool<T> pool)
+        where T : class
+    {
+        /// <summary>
+        /// Creates a pool of objects.<br/>
+        /// A factory with the parameterless constructor of <typeparamref name="T"/> will be provided.
+        /// </summary>
+        /// <returns>A new instance that manages pooled objects.</returns>
+        /// <seealso cref="FastObjectPool{T}.FastObjectPool(Func{T})"/>
+        /// <seealso cref="ObjectPool.get_Factory{T}"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FastObjectPool<T> CreateDefault() => new(ObjectPoolHelper<T>.Factory);
     }
 }

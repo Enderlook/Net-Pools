@@ -2,11 +2,16 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Enderlook.Pools;
 
-internal sealed class SharedReferencePool<TElement, THelper> : ObjectPool<TElement>
+internal sealed class SharedReferencePool<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+TElement, THelper> : ObjectPool<TElement>
     where THelper : ISharedPoolHelperReference
 #if !NET7_0_OR_GREATER
         , new()

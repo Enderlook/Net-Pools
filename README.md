@@ -38,12 +38,12 @@ public struct MyExpensiveValueType
 Additionally, it provides a local (thread-safe) pool in case of not wanting to use the global one, which support both manual and automatic (GC-triggered) trimming.
 
 ```cs
-// If delegate is not provided, the parameterless constructor is used instead.
+// It supports to use a custom delegate or the parameterless constructor
 ObjectPool<MyExpensiveType> pool = new SafeObjectPool<MyExpensiveType>(() => CreateExpensiveType());
-ObjectPool<MyExpensiveValueType> pool = new SafeObjectPool<MyExpensiveValueType>();
+ObjectPool<MyExpensiveValueType> pool = SafeObjectPool<MyExpensiveValueType>.CreateDefault(); // It's a separate method for better trimming support.
 ```
 
-You can configure this local pools to have custom or default constructors of the instances, to execute specific logic (such as disposing) when trimming objects, or to disable resising of the pool.
+You can configure this local pools to have custom or default constructors of the instances, to execute specific logic (such as disposing) when trimming objects, or to disable resizing of the pool.
 
 # API
 
@@ -56,10 +56,30 @@ namespace Enderlook.Pools
     /// <typeparam name="T">Type of object to pool</typeparam>
     public abstract class ObjectPool<T>
     {
+        #region Extension members from ObjectPool. Has [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+
         /// <summary>
         /// Retrieves a shared <see cref="ObjectPool{T}"/> instance.
         /// </summary>
         public static ObjectPool<T> Shared { get; }
+
+        /// <summary>
+        /// Retrieves a factory method that creates new instances of <typeparamref name="T"/> using its parameterless constructor.<br/>
+        /// If the paremterless constructor is not found, the delegate will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
+        /// </summary>
+        /// <remarks>This is quite similar to <see cref="Activator.CreateInstance{T}()"/>, but attempts to be more performant.</remarks>
+        public static Func<T> Factory { get; }
+
+        /// <summary>
+        /// Creates a new instance of <typeparamref name="T"/> using its parameterless constructor.<br/>
+        /// If the paremterless constructor is not found, it will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
+        /// </summary>
+        /// <remarks>This is quite similar to <see cref="Activator.CreateInstance{T}()"/>, but attempts to be more performant.</remarks>
+        /// <returns>New instance of <typeparamref name="T"/>.</returns>
+        /// <exception cref="MissingMethodException">Thrown when the <typeparamref name="T"/> is a reference type and has no public parameterless constructor.</exception>
+        public static T CreateInstance();
+
+        #endregion
 
         /// <summary>
         /// Gets an approximate count of the objects stored in the pool.<br/>
@@ -99,6 +119,18 @@ namespace Enderlook.Pools
     /// <typeparam name="T">Type of object to pool</typeparam>
     public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     {
+        #region Extension members from FastObjectPool. Has [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+
+        /// <summary>
+        /// Creates a pool of objects.<br/>
+        /// A factory with the parameterless constructor of <typeparamref name="T"/> will be provided.
+        /// </summary>
+        /// <returns>A new instance that manages pooled objects.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FastObjectPool<T> CreateDefault();
+
+        #endregion
+
         /// <summary>
         /// Capacity of the pool.<br/>
         /// This region of the pool support concurrent access.<br/>
@@ -122,8 +154,7 @@ namespace Enderlook.Pools
         public bool IsReserveFixed { get; init; } = true;
 
         /// <summary>
-        /// Delegate which instantiates new objects.<br/>
-        /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
+        /// Delegate which instantiates new objects.
         /// </summary>
         public Func<T> Factory { get; }
 
@@ -131,13 +162,9 @@ namespace Enderlook.Pools
         /// Creates a pool of objects.
         /// </summary>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-        /// If no delegate is provided, a factory with the default constructor for <typeparamref name="T"/> will be used.</param>
-        public FastObjectPool(Func<T>? factory);
-
-        /// <summary>
-        /// Creates a pool of objects.
-        /// </summary>
-        public FastObjectPool();
+        /// For a default delegate use <see cref="FastObjectPool.CreateDefault{T}"/> or <see cref="ObjectPool.get_Factory{T}"/>.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+        public FastObjectPool(Func<T> factory);
     }
 
     /// <summary>
@@ -147,6 +174,18 @@ namespace Enderlook.Pools
     /// <typeparam name="T">Type of object to pool</typeparam>
     public sealed class SafeObjectPool<T> : ObjectPool<T>
     {
+        #region Extension members from SafeObjectPool. Has [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+
+        /// <summary>
+        /// Creates a pool of objects.<br/>
+        /// A factory with the parameterless constructor of <typeparamref name="T"/> will be provided.
+        /// </summary>
+        /// <returns>A new instance that manages pooled objects.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static SafeObjectPool<T> CreateDefault();
+
+        #endregion
+
         /// <summary>
         /// Capacity of the pool.<br/>
         /// This region of the pool support concurrent access.<br/>
@@ -179,8 +218,7 @@ namespace Enderlook.Pools
         public Action<T>? FreeCallback { get; init; }
 
         /// <summary>
-        /// Delegate which instantiates new objects.<br/>
-        /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
+        /// Delegate which instantiates new objects.
         /// </summary>
         public Func<T> Factory { get; }
 
@@ -188,13 +226,9 @@ namespace Enderlook.Pools
         /// Creates a pool of objects.
         /// </summary>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-        /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-        public SafeObjectPool(Func<T>? factory);
-
-        /// <summary>
-        /// Creates a pool of objects.
-        /// </summary>
-        public SafeObjectPool();
+        /// For a default delegate use <see cref="FastObjectPool.CreateDefault{T}"/> or <see cref="ObjectPool.get_Factory{T}"/>.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+        public SafeObjectPool(Func<T> factory);
     }
 
     /// <summary>

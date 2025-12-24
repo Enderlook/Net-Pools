@@ -3,13 +3,18 @@ using Enderlook.Pools.Free;
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Enderlook.Pools;
 
-internal sealed class SharedValueAtomicDisposablePool<TElement> : ObjectPool<TElement>
+internal sealed class SharedValueAtomicDisposablePool<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+TElement> : ObjectPool<TElement>
 {
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()

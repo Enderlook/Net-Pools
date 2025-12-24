@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -163,8 +164,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     internal byte disposeMode = Disposing<T>.DisposableMode;
 
     /// <summary>
-    /// Delegate which instantiates new objects.<br/>
-    /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
+    /// Delegate which instantiates new objects.
     /// </summary>
     public Func<T> Factory => factory;
 
@@ -172,10 +172,14 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
     /// Creates a pool of objects.
     /// </summary>
     /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
-    /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
-    public SafeObjectPool(Func<T>? factory)
+    /// For a default delegate use <see cref="SafeObjectPool.CreateDefault{T}"/> or <see cref="ObjectPool.get_Factory{T}"/>.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="factory"/> is <see langword="null"/>.</exception>
+    /// <seealso cref="SafeObjectPool.CreateDefault{T}"/>
+    /// <seealso cref="ObjectPool.get_Factory{T}"/>
+    public SafeObjectPool(Func<T> factory)
     {
-        this.factory = factory ?? ObjectPoolHelper<T>.Factory;
+        if (factory is null) Utils.ThrowArgumentNullException_Factory();
+        this.factory = factory;
         int capacity = Environment.ProcessorCount * 2;
         int arrayLength = capacity - 1; // -1 due to firstElement.
         if (typeof(T).IsValueType)
@@ -195,12 +199,6 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
         }
         GCCallbackObject<T> _ = new(this);
     }
-
-    /// <summary>
-    /// Creates a pool of objects.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public SafeObjectPool() : this(null) { }
 
     /// <summary>
     /// Calls the <see cref="IDisposable.Dispose"/> of all the pooled elements.
@@ -691,5 +689,28 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             Debug.Assert(array is ObjectWrapper[]);
             return Unsafe.As<ObjectWrapper[]>(array).Length;
         }
+    }
+}
+
+/// <summary>
+/// Utility methods for <see cref="SafeObjectPool{T}"/>
+/// </summary>
+public static class SafeObjectPool
+{
+    extension<
+#if NET5_0_OR_GREATER
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+    T>(SafeObjectPool<T> pool)
+    {
+        /// <summary>
+        /// Creates a pool of objects.<br/>
+        /// A factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be provided.
+        /// </summary>
+        /// <returns>A new instance that manages pooled objects.</returns>
+        /// <seealso cref="SafeObjectPool{T}.SafeObjectPool(Func{T})"/>
+        /// <seealso cref="ObjectPool.get_Factory{T}"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static SafeObjectPool<T> CreateDefault() => new(ObjectPoolHelper<T>.Factory);
     }
 }

@@ -110,6 +110,10 @@ internal static class Utils
     public static void ThrowArgumentNullException_Element()
         => throw new ArgumentNullException("element");
 
+    [DoesNotReturn]
+    public static void ThrowArgumentNullException_Factory()
+        => throw new ArgumentNullException("factory");
+
     public static void ThrowArgumentOutOfRangeException_ArrayLength()
         => throw new ArgumentOutOfRangeException("element", "Doesn't match expected array length.");
 

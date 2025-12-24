@@ -2,13 +2,18 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Enderlook.Pools;
 
-internal sealed class SharedValuePool<TElement, THelper> : ObjectPool<TElement>
+internal sealed class SharedValuePool<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+TElement, THelper> : ObjectPool<TElement>
     where THelper : ISharedPoolHelperValue
 #if !NET7_0_OR_GREATER
         , new()

@@ -3,12 +3,17 @@ using Enderlook.Pools.Free;
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Enderlook.Pools;
 
-internal sealed class SharedNotDisposabledUnmanagedValuePool<TElement> : ObjectPool<TElement>
+internal sealed class SharedNotDisposabledUnmanagedValuePool<
+#if NET5_0_OR_GREATER
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+#endif
+TElement> : ObjectPool<TElement>
 {
     // Inspired from https://source.dot.net/#System.Private.CoreLib/TlsOverPerCoreLockedStacksArrayPool.cs
 
