@@ -155,7 +155,12 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
         {
             Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
             Debug.Assert(adapters is not null);
-            SafeExactLengthArrayObjectPool<T> pool = new(length, default);
+            SafeExactLengthArrayObjectPool<T> pool = new(length, default)
+            {
+                Capacity = Capacity,
+                Reserve = Reserve,
+                IsReserveFixed = IsReserveFixed
+            };
             adapters.Add(length, pool);
 
             int count = adaptersCount;
