@@ -23,14 +23,14 @@ public struct MyExpensiveValueType
 {
     private AllocatedType value1;
     private AllocatedType value2;
-    
+
     // Parameterless constructors in value types is a C# 10 feature.
     public MyExpensiveValueType()
     {
         value1 = new();
         value2 = new();
     }
-    
+
     // [...]
 }
 ```
@@ -91,7 +91,7 @@ namespace Enderlook.Pools
         /// <param name="force">If <see langword="true"/>, the pool is forced to clear all elements inside. Otherwise, the pool may only clear partially or not clear at all if the heuristic says so.</param>
         public abstract void Trim(bool force = false);
     }
-    
+
     /// <summary>
     /// A lightweight, fast, dynamically-sized and thread-safe object pool to store objects.<br/>
     /// The pool is designed for fast rent and return of elements, so during multithreading scenarios it may accidentally free unnecessary objects during return (however, this is not a fatal error).
@@ -126,7 +126,7 @@ namespace Enderlook.Pools
         /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
         /// </summary>
         public Func<T> Factory { get; }
-        
+
         /// <summary>
         /// Creates a pool of objects.
         /// </summary>
@@ -146,7 +146,7 @@ namespace Enderlook.Pools
     /// </summary>
     /// <typeparam name="T">Type of object to pool</typeparam>
     public sealed class SafeObjectPool<T> : ObjectPool<T>
-    {    
+    {
         /// <summary>
         /// Capacity of the pool.<br/>
         /// This region of the pool support concurrent access.<br/>
@@ -183,14 +183,14 @@ namespace Enderlook.Pools
         /// If no delegate was provided during construction of the pool, a default one which calls the parameterless constructor (or <see langword="default"/> for value types if missing) will be provided.
         /// </summary>
         public Func<T> Factory { get; }
-        
+
         /// <summary>
         /// Creates a pool of objects.
         /// </summary>
         /// <param name="factory">Delegate used to construct instances of the pooled objects.<br/>
         /// If no delegate is provided, a factory with the parameterless constructor (or <see langword="default"/> for value types if missing) of <typeparamref name="T"/> will be used.</param>
         public SafeObjectPool(Func<T>? factory);
-        
+
         /// <summary>
         /// Creates a pool of objects.
         /// </summary>
@@ -207,7 +207,7 @@ namespace Enderlook.Pools
         /// Determines the length of the pooled arrays.
         /// </summary>
         public int Length { get; }
-    
+
         /// <summary>
         /// Capacity of the pool.<br/>
         /// This region of the pool support concurrent access.<br/>
@@ -236,7 +236,7 @@ namespace Enderlook.Pools
         /// <param name="length">Length of the pooled arrays.</param>
         public SafeExactLengthArrayObjectPool(int length);
     }
-    
+
     /// <summary>
     /// Represent a pool of arrays of exact length.
     /// </summary>
@@ -290,13 +290,13 @@ namespace Enderlook.Pools
         /// <param name="force">If <see langword="true"/>, the pool is forced to clear all elements inside. Otherwise, the pool may only clear partially or not clear at all if the heuristic says so.</param>
         public abstract void Trim(bool force = false);
     }
-        
+
     /// <summary>
     /// A fast, dynamically-sized and thread-safe array pool to store arrays of specific lengths.<br/>
     /// </summary>
     /// <typeparam name="T">Type of element array to pool</typeparam>
     public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
-    {    
+    {
         /// <summary>
         /// Capacity of the pool.<br/>
         /// This region of the pool support concurrent access.<br/>
@@ -323,7 +323,7 @@ namespace Enderlook.Pools
         /// Creates a new instance of the pool.
         /// </summary>
         public SafeExactLengthArrayPool();
-        
+
         /// <summary>
         /// Gives the internal <see cref="SafeExactLengthArrayObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
         /// </summary>
