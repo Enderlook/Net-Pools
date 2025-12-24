@@ -1,4 +1,5 @@
 # Net-Pools
+
 A pool implementation for Net objects.
 
 ```cs
@@ -45,7 +46,7 @@ ObjectPool<MyExpensiveValueType> pool = SafeObjectPool<MyExpensiveValueType>.Cre
 
 You can configure this local pools to have custom or default constructors of the instances, to execute specific logic (such as disposing) when trimming objects, or to disable resizing of the pool.
 
-# API
+## API
 
 ```cs
 namespace Enderlook.Pools
