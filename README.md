@@ -233,10 +233,37 @@ namespace Enderlook.Pools
     }
 
     /// <summary>
+    /// Represent a pool of arrays of a given length.
+    /// </summary>
+    /// <remarks>The pool has an specified policy of clearing or not arrays on return which is specified at the moment of instantiating the pool, this is used for <see cref="ObjectPool{T}.Return(T)"/>.<br/>
+    /// However, for overriding such policy you can use the method <see cref="Return(T[], bool)"/>.</remarks>
+    /// <typeparam name="T">Type of element of the array.</typeparam>
+    public abstract class ArrayObjectPool<T> : ObjectPool<T[]>
+    {
+        /// <summary>
+        /// Determines the default array clearing strategy.<br/>
+        /// If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="Return(T[])"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.
+        /// </summary>
+        public abstract bool ShouldClearArrayOnReturnByDefault { get; }
+
+        /// <summary>
+        /// Return an element to the pool.<br/>
+        /// If the pool is full, it's an implementation detail whenever the object is free or the pool is resized.<br/>
+        /// If <paramref name="element"/> is <see langword="default"/>, it's an implementation detail whenever it throws an exception or ignores the call. However, it should never leave the pool in an invalid state.
+        /// </summary>
+        /// <param name="element">Element to return.</param>
+        /// <param name="clearArray"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+        /// <remarks>The overload <see cref="ObjectPool{T}.Return(T)"/> uses a clearing policy specified by <see cref="ShouldClearArrayOnReturnByDefault"/>.</remarks>
+        public abstract void Return(T[] element, bool clearArray);
+    }
+
+    /// <summary>
     /// A fast, dynamically-sized and thread-safe array pool to store arrays of an specific length.<br/>
     /// </summary>
     /// <typeparam name="T">Type of element array to pool</typeparam>
-    public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T>
+    public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     {
         /// <summary>
         /// Determines the length of the pooled arrays.
@@ -269,7 +296,9 @@ namespace Enderlook.Pools
         /// Creates a pool of exact length array.
         /// </summary>
         /// <param name="length">Length of the pooled arrays.</param>
-        public SafeExactLengthArrayObjectPool(int length);
+        /// <param name="shouldClearArrayOnReturnByDefault">If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="Return(T[])"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+        public SafeExactLengthArrayObjectPool(int length, bool shouldClearArrayOnReturnByDefault = false);
     }
 
     /// <summary>
@@ -301,15 +330,19 @@ namespace Enderlook.Pools
         /// </list>
         /// </summary>
         /// <param name="length">Length of arrays.</param>
+        /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <returns>Wrapper of pool.</returns>
-        public static ObjectPool<T[]> SharedOfLength(int length);
+        public static ArrayObjectPool<T> SharedOfLength(int length, bool clearArrayOnReturn = false);
 
         /// <summary>
         /// Produces a wrapper <see cref="ObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
         /// </summary>
         /// <param name="length">Length of arrays.</param>
+        /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <returns>Wrapper of pool.</returns>
-        public virtual ObjectPool<T[]> OfLength(int length);
+        public virtual ArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false);
 
         /// <summary>
         /// Gets an approximate count of the objects stored in the pool.<br/>
@@ -360,11 +393,13 @@ namespace Enderlook.Pools
         public SafeExactLengthArrayPool();
 
         /// <summary>
-        /// Gives the internal <see cref="SafeExactLengthArrayObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
+        /// Produces a wrapper <see cref="SafeExactLengthArrayObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
         /// </summary>
         /// <param name="length">Length of arrays.</param>
+        /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <returns>Wrapper of pool.</returns>
-        public override ExactLengthArrayPool<T[]> OfLength(int length);
+        public override SafeExactLengthArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false)
     }
 }
 ```

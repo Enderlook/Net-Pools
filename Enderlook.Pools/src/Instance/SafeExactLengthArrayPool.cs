@@ -84,9 +84,9 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
     public override T[] Rent(int length)
     {
 #if NET5_0_OR_GREATER
-        return OfLength(length).Rent();
+        return OfLength(length, false).Rent();
 #else
-        return OfLength_(length).Rent();
+        return OfLength_(length, false).Rent();
 #endif
     }
 
@@ -95,9 +95,9 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
     {
         if (array is null) return;
 #if NET5_0_OR_GREATER
-        OfLength(array.Length).Return_(array);
+        OfLength(array.Length, false).Return_(array, clearArray);
 #else
-        OfLength_(array.Length).Return_(array);
+        OfLength_(array.Length, false).Return_(array, clearArray);
 #endif
     }
 
@@ -114,25 +114,28 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
     /// Gives the internal <see cref="SafeExactLengthArrayObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
     /// </summary>
     /// <param name="length">Length of arrays.</param>
+    /// <param name="clearArrayOnReturn">If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="ObjectPool{T}.Return(T)"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
     /// <returns>Wrapper of pool.</returns>
 #if NET5_0_OR_GREATER
-    public override SafeExactLengthArrayObjectPool<T> OfLength(int length)
+    public override SafeExactLengthArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false)
 #else
-    public override ObjectPool<T[]> OfLength(int length) => OfLength_(length);
-    private SafeExactLengthArrayObjectPool<T> OfLength_(int length)
+    public override ArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false) => OfLength_(length, clearArrayOnReturn);
+    private SafeExactLengthArrayObjectPool<T> OfLength_(int length, bool clearArrayOnReturn)
 #endif
     {
         SafeExactLengthArrayObjectPool<T>? pool = lastPool;
-        if (pool?.Length == length)
+        if (pool is not null && pool.Length == length && pool.ShouldClearArrayOnReturnByDefault == clearArrayOnReturn)
             return pool;
 
+        int key = clearArrayOnReturn ? -length - 1 : length;
         Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
         if (adapters is null)
             return Fallback1();
 
         lock (adapters)
         {
-            if (adapters.TryGetValue(length, out ObjectPool<T[]>? pool_))
+            if (adapters.TryGetValue(key, out ObjectPool<T[]>? pool_))
             {
                 Debug.Assert(pool_ is SafeExactLengthArrayObjectPool<T>);
                 return lastPool = Unsafe.As<SafeExactLengthArrayObjectPool<T>>(pool_);
@@ -155,7 +158,10 @@ public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
         {
             Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
             Debug.Assert(adapters is not null);
-            SafeExactLengthArrayObjectPool<T> pool = new(length, default)
+
+            adapters.TryGetValue(clearArrayOnReturn ? length : -length - 1, out ObjectPool<T[]>? original);
+
+            SafeExactLengthArrayObjectPool<T> pool = new(length, Unsafe.As<SafeExactLengthArrayObjectPool<T>?>(original), clearArrayOnReturn)
             {
                 Capacity = Capacity,
                 Reserve = Reserve,

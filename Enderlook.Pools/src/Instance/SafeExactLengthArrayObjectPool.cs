@@ -9,7 +9,7 @@ namespace Enderlook.Pools;
 /// A fast, dynamically-sized and thread-safe array pool to store arrays of an specific length.<br/>
 /// </summary>
 /// <typeparam name="T">Type of element array to pool</typeparam>
-public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
+public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
 {
     /// <summary>
     /// Determines the length of the pooled arrays.
@@ -20,7 +20,7 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// Storage for the pool objects.<br/>
     /// The array is not an stack so the whole array must be traversed to find objects.
     /// </summary>
-    internal readonly Array array;
+    internal readonly Array? array;
 
     /// <summary>
     /// The first item is stored in a dedicated field because we expect to be able to satisfy most requests from it.
@@ -61,6 +61,9 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     {
         get
         {
+            if (pool is SafeExactLengthArrayObjectPool<T> p)
+                return p.Capacity;
+
             Debug.Assert(array is ObjectWrapper[]);
             ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
             return items.Length + 1;
@@ -84,6 +87,9 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     {
         get
         {
+            if (pool is SafeExactLengthArrayObjectPool<T> p)
+                return p.Reserve;
+
             Array? reserve_ = Utils.NullExchange(ref reserve);
             int count;
             Debug.Assert(reserve_ is ObjectWrapper[]);
@@ -104,29 +110,49 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     public bool IsReserveFixed { get; init; }
 
     /// <summary>
+    /// Determines the default array clearing strategy.<br/>
+    /// If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="Return(T[])"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.
+    /// </summary>
+    public override bool ShouldClearArrayOnReturnByDefault { get; }
+
+    private readonly SafeExactLengthArrayObjectPool<T>? pool;
+
+    /// <summary>
     /// Creates a pool of exact length array.
     /// </summary>
     /// <param name="length">Length of the pooled arrays.</param>
-    public SafeExactLengthArrayObjectPool(int length)
+    /// <param name="shouldClearArrayOnReturnByDefault">If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="Return(T[])"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+    public SafeExactLengthArrayObjectPool(int length, bool shouldClearArrayOnReturnByDefault = false)
     {
         Length = length;
+        ShouldClearArrayOnReturnByDefault = shouldClearArrayOnReturnByDefault;
         int capacity = Environment.ProcessorCount * 2;
         reserve = new ObjectWrapper[capacity];
         array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
         GCCallbackObject<T[]> _ = new(this);
     }
 
-    internal SafeExactLengthArrayObjectPool(int length, bool _)
+    internal SafeExactLengthArrayObjectPool(int length, SafeExactLengthArrayObjectPool<T>? pool, bool shouldClearArrayOnReturnByDefault)
     {
+        this.pool = pool;
         Length = length;
-        int capacity = Environment.ProcessorCount * 2;
-        reserve = new ObjectWrapper[capacity];
-        array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
+        ShouldClearArrayOnReturnByDefault = shouldClearArrayOnReturnByDefault;
+        if (pool is null)
+        {
+            int capacity = Environment.ProcessorCount * 2;
+            reserve = new ObjectWrapper[capacity];
+            array = new ObjectWrapper[capacity - 1]; // -1 due to firstElement.
+        }
     }
 
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
+        if (pool is SafeExactLengthArrayObjectPool<T> p)
+            return p.ApproximateCount();
+
         int count = firstElement is null ? 0 : 1;
         Debug.Assert(array is ObjectWrapper[]);
         ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
@@ -144,6 +170,9 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
     public override T[] Rent()
     {
+        if (pool is SafeExactLengthArrayObjectPool<T> p)
+            return p.Rent();
+
         // First, we examine the first element.
         // If that fails, we look at the remaining elements.
         // Note that intitial read are optimistically not synchronized. This is intentional.
@@ -188,21 +217,48 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// Return rented object to pool.
     /// </summary>
     /// <param name="element">Object to return.</param>
+    /// <remarks>It uses a clearing policy specified by <see cref="ShouldClearArrayOnReturnByDefault"/>.</remarks>
     public override void Return(T[] element)
     {
         if (element is null) return;
         if (element.Length != Length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
 
-        Return_(element);
+        if (pool is SafeExactLengthArrayObjectPool<T> p)
+            p.Return_(element, ShouldClearArrayOnReturnByDefault);
+        else
+            Return_(element, ShouldClearArrayOnReturnByDefault);
+    }
+
+    /// <summary>
+    /// Return rented object to pool.
+    /// </summary>
+    /// <param name="element">Object to return.</param>
+    /// <param name="clearArrayOnReturn">If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="ObjectPool{T}.Return(T)"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+    public override void Return(T[] element, bool clearArrayOnReturn)
+    {
+        if (element is null) return;
+        if (element.Length != Length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
+
+        Return_(element, clearArrayOnReturn);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void Return_(T[] element)
+    internal void Return_(T[] element, bool clearArray)
     {
         Debug.Assert(element.Length == Length);
 
         if (Length == 0)
             return;
+
+        if (clearArray)
+        {
+#if NET6_0_OR_GREATER
+            Array.Clear(element);
+#else
+            Array.Clear(element, 0, element.Length);
+#endif
+        }
 
         // First, we examine the first element.
         // Then do interlocking.
@@ -228,6 +284,12 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// <inheritdoc cref="ObjectPool{T}.Trim(bool)"/>
     public override void Trim(bool force = false)
     {
+        if (pool is SafeExactLengthArrayObjectPool<T> p)
+        {
+            p.Trim(force);
+            return;
+        }
+
         const int ArrayLowAfterMilliseconds = 60 * 1000; // Trim after 60 seconds for low pressure.
         const int ArrayMediumAfterMilliseconds = 60 * 1000; // Trim after 60 seconds for medium pressure.
         const int ArrayHighTrimAfterMilliseconds = 10 * 1000; // Trim after 10 seconds for high pressure.

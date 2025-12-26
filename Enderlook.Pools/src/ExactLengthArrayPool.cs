@@ -41,23 +41,28 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
     /// </list>
     /// </summary>
     /// <param name="length">Length of arrays.</param>
+    /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
     /// <returns>Wrapper of pool.</returns>
-    public static ObjectPool<T[]> SharedOfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
+    public static ArrayObjectPool<T> SharedOfLength(int length, bool clearArrayOnReturn = false) => SharedExactLengthArrayObjectPool<T>.GetPool(length, clearArrayOnReturn);
 
     /// <summary>
     /// Produces a wrapper <see cref="ObjectPool{T}"/> that uses the current instance to create arrays of the specified length.<br/>
     /// </summary>
     /// <param name="length">Length of arrays.</param>
+    /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
     /// <returns>Wrapper of pool.</returns>
-    public virtual ObjectPool<T[]> OfLength(int length)
+    public virtual ArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false)
     {
+        int key = clearArrayOnReturn ? -length : length;
         Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
         if (adapters is null)
             return Fallback1();
 
         lock (adapters)
         {
-            if (adapters.TryGetValue(length, out ObjectPool<T[]>? pool))
+            if (adapters.TryGetValue(key, out ObjectPool<T[]>? pool))
             {
                 Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
                 return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
@@ -73,7 +78,7 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
             adapters = this.adapters;
             lock (adapters)
             {
-                if (adapters.TryGetValue(length, out ObjectPool<T[]>? pool))
+                if (adapters.TryGetValue(key, out ObjectPool<T[]>? pool))
                 {
                     Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
                     return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
@@ -87,8 +92,8 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
         {
             Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
             Debug.Assert(adapters is not null);
-            ExactLengthArrayPoolAdapter<T> pool = new(this, length);
-            adapters.Add(length, pool);
+            ExactLengthArrayPoolAdapter<T> pool = new(this, length, clearArrayOnReturn);
+            adapters.Add(key, pool);
             return pool;
         }
     }

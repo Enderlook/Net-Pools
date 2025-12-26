@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Enderlook.Pools;
 
@@ -12,7 +13,7 @@ namespace Enderlook.Pools;
 /// A fast and thread-safe array of exact size pool to store a large amount of objects.
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
-internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
+internal sealed class SharedExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
 {
     /// <summary>
     /// Length of the array.
@@ -89,6 +90,11 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     /// Keep record of last time <see cref="GlobalReserve"/> was trimmed;
     /// </summary>
     private int GlobalReserveMillisecondsTimeStamp;
+
+    private SharedExactLengthArrayObjectPoolClear<T>? Clear;
+
+    /// <inheritdoc cref="ArrayObjectPool{T}.ShouldClearArrayOnReturnByDefault"/>
+    public override bool ShouldClearArrayOnReturnByDefault => false;
 
     private SharedExactLengthArrayObjectPool(int length)
     {
@@ -244,12 +250,24 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     }
 
     /// <inheritdoc cref="ObjectPool{T}.Return(T)"/>
-    public override void Return(T[] element)
+    public override void Return(T[] element) => Return(element, false);
+
+    /// <inheritdoc cref="ArrayObjectPool{T}.Return(T[], bool)"/>
+    public override void Return(T[] element, bool clearArray)
     {
         if (element is null) Utils.ThrowArgumentNullException_Element();
         int length = Length;
         if (element.Length != length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
         if (length == 0) return;
+
+        if (clearArray)
+        {
+#if NET6_0_OR_GREATER
+            Array.Clear(element);
+#else
+            Array.Clear(element, 0, length);
+#endif
+        }
 
         // Store the element into the thread local field.
         // If there's already an object in it, push that object down into the per-core stacks,
@@ -346,32 +364,55 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ObjectPool<T[]>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static SharedExactLengthArrayObjectPool<T> GetPool(int length)
+    public static ArrayObjectPool<T> GetPool(int length, bool clearOnReturn)
     {
         ref ThreadLocal threadLocals = ref ThreadLocals;
         ref (object Element, object Pool) slot = ref GetSlot(ref threadLocals, length);
         if (Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool)?.Length == length)
-            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool);
-        return Cache(length);
+        {
+            SharedExactLengthArrayObjectPool<T> pool = Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool);
+            if (clearOnReturn)
+            {
+                SharedExactLengthArrayObjectPoolClear<T>? subPool = pool.Clear;
+                if (subPool is not null)
+                    return subPool;
+            }
+            else
+                return pool;
+        }
+        return Cache(length, clearOnReturn);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static SharedExactLengthArrayObjectPool<T> Cache(int length)
+        static ArrayObjectPool<T> Cache(int length, bool clearOnReturn)
         {
             ref ThreadLocal threadLocals = ref ThreadLocals;
             ref (object Element, object Pool) slot = ref GetSlot(ref threadLocals, length);
             Dictionary<int, (object Element, object Pool)> threadLocals_ = threadLocals.Pools ??= new();
 #if NET6_0_OR_GREATER
             ref (object Element, object Pool) tuple = ref CollectionsMarshal.GetValueRefOrAddDefault(threadLocals_, length, out bool exists);
-            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (exists
+            SharedExactLengthArrayObjectPool<T> pool = Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (exists
                 ? tuple
                 : tuple = InitializeThreadLocalElementStaticAndSetLast(length))
             ).Pool);
 #else
-            return Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (threadLocals_.TryGetValue(length, out (object Element, object Pool) tuple)
+            SharedExactLengthArrayObjectPool<T> pool = Unsafe.As<SharedExactLengthArrayObjectPool<T>>((slot = (threadLocals_.TryGetValue(length, out (object Element, object Pool) tuple)
                 ? tuple
                 : InitializeThreadLocalElementStaticAndSetLast(length))
             ).Pool);
 #endif
+            if (clearOnReturn)
+            {
+                SharedExactLengthArrayObjectPoolClear<T>? subPool = pool.Clear;
+                if (subPool is null)
+                {
+                    SharedExactLengthArrayObjectPoolClear<T> newPool = new(pool);
+                    return Interlocked.CompareExchange(ref pool.Clear, newPool, null) ?? newPool;
+                }
+                else
+                    return subPool;
+            }
+            else
+                return pool;
         }
     }
 
@@ -565,4 +606,28 @@ internal struct ThreadLocalCache
     private (object Element, object Pool) E15;
     private (object Element, object Pool) E16;
 #endif
+}
+
+internal sealed class SharedExactLengthArrayObjectPoolClear<T>(SharedExactLengthArrayObjectPool<T> owner) : ArrayObjectPool<T>
+{
+    public override bool ShouldClearArrayOnReturnByDefault
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override int ApproximateCount() => owner.ApproximateCount();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override T[] Rent() => owner.Rent();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override void Return(T[] element, bool clearArray) => owner.Return(element, clearArray);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override void Return(T[] element) => owner.Return(element, true);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override void Trim(bool force = false) => owner.Trim(force);
 }

@@ -2,6 +2,11 @@
 
 ## WIP
 
+- Rework array pools to support configuring clearing policy at its construction:
+  - Create `ArrayObjectPool<T>` and make `SafeExactLengthArrayObjectPool<T>` inherit from it.
+  - Modify constructor `SafeExactLengthArrayObjectPool(int length)` to `SafeExactLengthArrayObjectPool(int length, bool shouldClearArrayOnReturnByDefault = false)`.
+  - Modify `ObjectPool<T[]> ExactLengthArrayPool<T>.OfLength(int length)` to `ArrayObjectPool<T> ExactLengthArrayPool<T>.OfLength(int length, bool clearArrayOnReturn = false)`.
+
 ## 0.4.0
 
 - Reduce generic instantiations internally produced by `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)`.

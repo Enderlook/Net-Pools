@@ -28,12 +28,8 @@ internal sealed class SharedExactLengthArrayPool<T> : ExactLengthArrayPool<T>
         return count;
     }
 
-    /// <inheritdoc cref="ExactLengthArrayPool{T}.OfLength(int)"/>
-#if NET5_0_OR_GREATER
-    public override SharedExactLengthArrayObjectPool<T> OfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
-#else
-    public override ObjectPool<T[]> OfLength(int length) => SharedExactLengthArrayObjectPool<T>.GetPool(length);
-#endif
+    /// <inheritdoc cref="ExactLengthArrayPool{T}.OfLength(int, bool)"/>
+    public override ArrayObjectPool<T> OfLength(int length, bool clearOnReturn) => SharedExactLengthArrayObjectPool<T>.GetPool(length, clearOnReturn);
 
     /// <summary>
     /// Rents an array of the specified length.
