@@ -175,7 +175,7 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
         {
             Debug.Assert(index < perCoreStacks.Length);
             // TODO: This Unsafe.Add could be improved to avoid the under the hood multiplication (`base + offset * size` and just do `base + offset`).
-            int value = Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2, failedAttempt);
+            int value = Unsafe.Add(ref perCoreStacksRoot, index).TryPop(out ObjectWrapper element2, false);
             if (value > 0)
             {
                 Debug.Assert(element2.Value is T[]);
