@@ -10,7 +10,7 @@ namespace Enderlook.Pools;
 /// <summary>
 /// A fast, dynamically-sized and thread-safe array pool to store arrays of specific lengths.<br/>
 /// </summary>
-/// <typeparam name="T">Type of element array to pool</typeparam>
+/// <typeparam name="T">Type of element array to pool.</typeparam>
 public sealed class SafeExactLengthArrayPool<T> : ExactLengthArrayPool<T>
 {
     private int capacity;
