@@ -57,25 +57,8 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
     {
         int key = clearArrayOnReturn ? -length : length;
         Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
-        if (adapters is null)
-            return Fallback1();
-
-        lock (adapters)
+        if (adapters is not null)
         {
-            if (adapters.TryGetValue(key, out ObjectPool<T[]>? pool))
-            {
-                Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
-                return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
-            }
-            return Fallback2();
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        ExactLengthArrayPoolAdapter<T> Fallback1()
-        {
-            Dictionary<int, ObjectPool<T[]>>? adapters = [];
-            Interlocked.CompareExchange(ref this.adapters, adapters, null);
-            adapters = this.adapters;
             lock (adapters)
             {
                 if (adapters.TryGetValue(key, out ObjectPool<T[]>? pool))
@@ -83,18 +66,32 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
                     Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
                     return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
                 }
-                return Fallback2();
             }
         }
+        return Fallback();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        ExactLengthArrayPoolAdapter<T> Fallback2()
+        ExactLengthArrayPoolAdapter<T> Fallback()
         {
             Dictionary<int, ObjectPool<T[]>>? adapters = this.adapters;
-            Debug.Assert(adapters is not null);
-            ExactLengthArrayPoolAdapter<T> pool = new(this, length, clearArrayOnReturn);
-            adapters.Add(key, pool);
-            return pool;
+
+            if (adapters is null)
+            {
+                adapters = [];
+                Interlocked.CompareExchange(ref this.adapters, adapters, null);
+                adapters = this.adapters;
+            }
+
+            lock (adapters)
+            {
+                if (!adapters.TryGetValue(key, out ObjectPool<T[]>? pool))
+                {
+                    pool = new ExactLengthArrayPoolAdapter<T>(this, length, clearArrayOnReturn);
+                    adapters.Add(key, pool);
+                }
+                Debug.Assert(pool is ExactLengthArrayPoolAdapter<T>);
+                return Unsafe.As<ExactLengthArrayPoolAdapter<T>>(pool);
+            }
         }
     }
 
