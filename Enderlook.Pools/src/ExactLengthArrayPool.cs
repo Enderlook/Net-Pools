@@ -12,7 +12,7 @@ namespace Enderlook.Pools;
 /// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ExactLengthArrayPool<T> : ArrayPool<T>
 {
-    internal Dictionary<int, ObjectPool<T[]>>? adapters;
+    private protected Dictionary<int, ObjectPool<T[]>>? adapters;
 
     /// <summary>
     /// Retrieves a shared <see cref="ExactLengthArrayPool{T}"/> instance.<br/>
