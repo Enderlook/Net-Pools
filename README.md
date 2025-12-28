@@ -257,6 +257,14 @@ namespace Enderlook.Pools
         /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <remarks>The overload <see cref="ObjectPool{T}.Return(T)"/> uses a clearing policy specified by <see cref="ShouldClearArrayOnReturnByDefault"/>.</remarks>
         public abstract void Return(T[] element, bool clearArray);
+
+        /// <summary>
+        /// Returns a instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.
+        /// </summary>
+        /// <param name="clearArrayOnReturnByDefault">New value for <see cref="ShouldClearArrayOnReturnByDefault"/>.</param>
+        /// <returns>An instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.<br/>
+        /// It may be a new instance, a pooled one or the same instance if the values matches.</returns>
+        public virtual ArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault);
     }
 
     /// <summary>
@@ -299,6 +307,14 @@ namespace Enderlook.Pools
         /// <param name="shouldClearArrayOnReturnByDefault">If this is <see langword="true"/>, buffers that will be stored to enable subsequent reuse in <see cref="Return(T[])"/>, will have their content cleared so that a subsequent consumer will not see the previous consumer's content.<br/>
         /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         public SafeExactLengthArrayObjectPool(int length, bool shouldClearArrayOnReturnByDefault = false);
+
+        /// <summary>
+        /// Returns a instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.
+        /// </summary>
+        /// <param name="clearArrayOnReturnByDefault">New value for <see cref="ShouldClearArrayOnReturnByDefault"/>.</param>
+        /// <returns>An instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.<br/>
+        /// It may be a new instance, a pooled one or the same instance if the values matches.</returns>
+        public SafeExactLengthArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault);
     }
 
     /// <summary>

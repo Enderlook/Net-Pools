@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -61,8 +62,8 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     {
         get
         {
-            if (pool is SafeExactLengthArrayObjectPool<T> p)
-                return p.Capacity;
+            if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
+                return pool.Capacity;
 
             Debug.Assert(array is ObjectWrapper[]);
             ObjectWrapper[] items = Unsafe.As<ObjectWrapper[]>(array);
@@ -87,8 +88,8 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     {
         get
         {
-            if (pool is SafeExactLengthArrayObjectPool<T> p)
-                return p.Reserve;
+            if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
+                return pool.Reserve;
 
             Array? reserve_ = Utils.NullExchange(ref reserve);
             int count;
@@ -116,7 +117,7 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     /// </summary>
     public override bool ShouldClearArrayOnReturnByDefault { get; }
 
-    private readonly SafeExactLengthArrayObjectPool<T>? pool;
+    private bool isProxy;
 
     /// <summary>
     /// Creates a pool of exact length array.
@@ -136,7 +137,8 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
 
     internal SafeExactLengthArrayObjectPool(int length, SafeExactLengthArrayObjectPool<T>? pool, bool shouldClearArrayOnReturnByDefault)
     {
-        this.pool = pool;
+        oppositeClear = pool;
+        isProxy = pool is not null;
         Length = length;
         ShouldClearArrayOnReturnByDefault = shouldClearArrayOnReturnByDefault;
         if (pool is null)
@@ -147,11 +149,19 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetOriginal([NotNullWhen(true)] out SafeExactLengthArrayObjectPool<T>? pool)
+    {
+        Debug.Assert(isProxy ? oppositeClear is SafeExactLengthArrayObjectPool<T> : oppositeClear is null);
+        pool = Unsafe.As<SafeExactLengthArrayObjectPool<T>?>(oppositeClear);
+        return isProxy;
+    }
+
     /// <inheritdoc cref="ObjectPool{T}.ApproximateCount"/>
     public override int ApproximateCount()
     {
-        if (pool is SafeExactLengthArrayObjectPool<T> p)
-            return p.ApproximateCount();
+        if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
+            return pool.ApproximateCount();
 
         int count = firstElement is null ? 0 : 1;
         Debug.Assert(array is ObjectWrapper[]);
@@ -170,8 +180,8 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     /// <inheritdoc cref="ObjectPool{T}.Rent"/>
     public override T[] Rent()
     {
-        if (pool is SafeExactLengthArrayObjectPool<T> p)
-            return p.Rent();
+        if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
+            return pool.Rent();
 
         // First, we examine the first element.
         // If that fails, we look at the remaining elements.
@@ -223,8 +233,8 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
         if (element is null) return;
         if (element.Length != Length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
 
-        if (pool is SafeExactLengthArrayObjectPool<T> p)
-            p.Return_(element, ShouldClearArrayOnReturnByDefault);
+        if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
+            pool.Return_(element, ShouldClearArrayOnReturnByDefault);
         else
             Return_(element, ShouldClearArrayOnReturnByDefault);
     }
@@ -241,6 +251,29 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
         if (element.Length != Length) Utils.ThrowArgumentOutOfRangeException_ArrayLength();
 
         Return_(element, clearArrayOnReturn);
+    }
+
+    /// <summary>
+    /// Returns a instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.
+    /// </summary>
+    /// <param name="clearArrayOnReturnByDefault">New value for <see cref="ShouldClearArrayOnReturnByDefault"/>.</param>
+    /// <returns>An instance of the pool in which the <see cref="ShouldClearArrayOnReturnByDefault"/> has been modified.<br/>
+    /// It may be a new instance, a pooled one or the same instance if the values matches.</returns>
+#if NET5_0_OR_GREATER
+    public override SafeExactLengthArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault)
+#else
+    public override ArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault)
+#endif
+    {
+        if (ShouldClearArrayOnReturnByDefault == clearArrayOnReturnByDefault)
+            return this;
+        Debug.Assert(oppositeClear is null or SafeExactLengthArrayObjectPool<T>);
+        return Unsafe.As<SafeExactLengthArrayObjectPool<T>>(oppositeClear) ?? Work();
+        SafeExactLengthArrayObjectPool<T> Work()
+        {
+            SafeExactLengthArrayObjectPool<T> value = new(Length, this, clearArrayOnReturnByDefault);
+            return Unsafe.As<SafeExactLengthArrayObjectPool<T>>(Interlocked.CompareExchange(ref oppositeClear, value, null) ?? value);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -284,9 +317,9 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     /// <inheritdoc cref="ObjectPool{T}.Trim(bool)"/>
     public override void Trim(bool force = false)
     {
-        if (pool is SafeExactLengthArrayObjectPool<T> p)
+        if (TryGetOriginal(out SafeExactLengthArrayObjectPool<T>? pool))
         {
-            p.Trim(force);
+            pool.Trim(force);
             return;
         }
 

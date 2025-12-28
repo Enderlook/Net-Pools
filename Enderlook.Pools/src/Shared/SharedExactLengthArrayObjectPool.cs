@@ -91,8 +91,6 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
     /// </summary>
     private int GlobalReserveMillisecondsTimeStamp;
 
-    private SharedExactLengthArrayObjectPoolClear<T>? Clear;
-
     /// <inheritdoc cref="ArrayObjectPool{T}.ShouldClearArrayOnReturnByDefault"/>
     public override bool ShouldClearArrayOnReturnByDefault => false;
 
@@ -373,9 +371,12 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
             SharedExactLengthArrayObjectPool<T> pool = Unsafe.As<SharedExactLengthArrayObjectPool<T>>(slot.Pool);
             if (clearOnReturn)
             {
-                SharedExactLengthArrayObjectPoolClear<T>? subPool = pool.Clear;
+                ArrayObjectPool<T>? subPool = pool.oppositeClear;
                 if (subPool is not null)
-                    return subPool;
+                {
+                    Debug.Assert(subPool is SharedExactLengthArrayObjectPoolClear<T>);
+                    return Unsafe.As<SharedExactLengthArrayObjectPoolClear<T>>(subPool);
+                }
             }
             else
                 return pool;
@@ -402,17 +403,31 @@ internal sealed class SharedExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
 #endif
             if (clearOnReturn)
             {
-                SharedExactLengthArrayObjectPoolClear<T>? subPool = pool.Clear;
+                ArrayObjectPool<T>? subPool = pool.oppositeClear;
                 if (subPool is null)
                 {
                     SharedExactLengthArrayObjectPoolClear<T> newPool = new(pool);
-                    return Interlocked.CompareExchange(ref pool.Clear, newPool, null) ?? newPool;
+                    subPool = Interlocked.CompareExchange(ref pool.oppositeClear, newPool, null) ?? newPool;
                 }
-                else
-                    return subPool;
+                Debug.Assert(subPool is SharedExactLengthArrayObjectPoolClear<T>);
+                return Unsafe.As<SharedExactLengthArrayObjectPoolClear<T>>(subPool);
             }
             else
                 return pool;
+        }
+    }
+
+    /// <inheritdoc cref="ArrayObjectPool{T}.WithClearArrayOnReturn(bool)"/>
+    public override ArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault)
+    {
+        return clearArrayOnReturnByDefault
+            ? Unsafe.As<SharedExactLengthArrayObjectPoolClear<T>>(oppositeClear ?? Work())
+            : this;
+
+        ArrayObjectPool<T> Work()
+        {
+            SharedExactLengthArrayObjectPoolClear<T> value = new(this);
+            return Interlocked.CompareExchange(ref oppositeClear, value, null) ?? value;
         }
     }
 
@@ -608,7 +623,7 @@ internal struct ThreadLocalCache
 #endif
 }
 
-internal sealed class SharedExactLengthArrayObjectPoolClear<T>(SharedExactLengthArrayObjectPool<T> owner) : ArrayObjectPool<T>
+internal sealed class SharedExactLengthArrayObjectPoolClear<T> : ArrayObjectPool<T>
 {
     public override bool ShouldClearArrayOnReturnByDefault
     {
@@ -617,17 +632,23 @@ internal sealed class SharedExactLengthArrayObjectPoolClear<T>(SharedExactLength
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override int ApproximateCount() => owner.ApproximateCount();
+    public SharedExactLengthArrayObjectPoolClear(SharedExactLengthArrayObjectPool<T> owner) => oppositeClear = owner;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override T[] Rent() => owner.Rent();
+    public override int ApproximateCount() => Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!.ApproximateCount();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Return(T[] element, bool clearArray) => owner.Return(element, clearArray);
+    public override T[] Rent() => Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!.Rent();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Return(T[] element) => owner.Return(element, true);
+    public override void Return(T[] element, bool clearArray) => Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!.Return(element, clearArray);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Trim(bool force = false) => owner.Trim(force);
+    public override void Return(T[] element) => Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!.Return(element, true);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override void Trim(bool force = false) => Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!.Trim(force);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public override ArrayObjectPool<T> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault) => clearArrayOnReturnByDefault ? this : Unsafe.As<SharedExactLengthArrayObjectPool<T>>(oppositeClear)!;
 }

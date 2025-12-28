@@ -36,4 +36,10 @@ internal sealed class ExactLengthArrayPoolAdapter<TElement>(ExactLengthArrayPool
 
     /// <inheritdoc cref="ObjectPool{T}.Trim(bool)"/>
     public override void Trim(bool force = false) => pool.Trim(force);
+
+    /// <inheritdoc cref="ArrayObjectPool{T}.WithClearArrayOnReturn(bool)"/>
+    public override ArrayObjectPool<TElement> WithClearArrayOnReturn(bool clearArrayOnReturnByDefault)
+        => clearArrayOnReturnByDefault == clearOnReturn
+            ? this
+            : (oppositeClear ??= pool.OfLength(length, clearArrayOnReturnByDefault));
 }
