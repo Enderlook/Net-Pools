@@ -434,7 +434,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
         {
             if (!IsReserveFixed)
                 Array.Resize(ref reserve_, Math.Max(newCount, Math.Max(reserve_.Length * 2, 1)));
-            else if (currentReserveCount + 1 == reserve_.Length)
+            else if (currentReserveCount + 1 >= reserve_.Length)
             {
                 reserve = reserve_;
                 return;
@@ -443,6 +443,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 
         int newReserveCount = ObjectPoolHelper.SendToReserve_(obj, items, reserve_, ref reserveCount);
 
+        Debug.Assert(newReserveCount <= reserve_.Length);
         reserveCount = newReserveCount;
         reserve = reserve_;
     }

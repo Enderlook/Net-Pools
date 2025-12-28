@@ -8,6 +8,7 @@
   - Modify `ObjectPool<T[]> ExactLengthArrayPool<T>.OfLength(int length)` to `ArrayObjectPool<T> ExactLengthArrayPool<T>.OfLength(int length, bool clearArrayOnReturn = false)`.
 - Fix typo in documentation.
 - Fix error in `SafeExactLengthArrayPool<T>` and `SafeExactLengthArrayObjectPool<T>` produced when using the reserve and `T` was a value type.
+- Fix error when a non-shared pool exceeds its fixed reserve.
 
 ## 0.4.0
 

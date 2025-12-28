@@ -300,7 +300,7 @@ internal static class ObjectPoolHelper
         {
             if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
-            else if (reserveCount + 1 == reserve.Length)
+            else if (reserveCount + 1 >= reserve.Length)
             {
                 switch (self.disposeMode)
                 {
@@ -345,6 +345,7 @@ internal static class ObjectPoolHelper
 
         int newReserveCount = (int)((long)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<T>());
         Debug.Assert(newReserveCount == reserveCount);
+        Debug.Assert(newReserveCount <= reserve.Length);
         self.reserveCount = newReserveCount;
         self.reserve = reserve;
     }
@@ -366,7 +367,7 @@ internal static class ObjectPoolHelper
         {
             if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
-            else if (reserveCount + 1 == reserve.Length)
+            else if (reserveCount + 1 >= reserve.Length)
             {
                 switch (self.disposeMode)
                 {
@@ -389,6 +390,7 @@ internal static class ObjectPoolHelper
 
         int newReserveCount = SendToReserve_(obj, items, reserve, ref reserveCount);
 
+        Debug.Assert(newReserveCount <= reserve.Length);
         self.reserveCount = newReserveCount;
         self.reserve = reserve;
     }
@@ -411,7 +413,7 @@ internal static class ObjectPoolHelper
         {
             if (!self.IsReserveFixed)
                 Array.Resize(ref reserve, Math.Max(newCount, Math.Max(reserve.Length * 2, 1)));
-            else if (reserveCount + 1 == reserve.Length)
+            else if (reserveCount + 1 >= reserve.Length)
             {
                 self.reserve = reserve;
                 return;
@@ -420,6 +422,7 @@ internal static class ObjectPoolHelper
 
         int newReserveCount = SendToReserve_(obj, items, reserve, ref reserveCount);
 
+        Debug.Assert(newReserveCount <= reserve.Length);
         self.reserveCount = newReserveCount;
         self.reserve = reserve;
     }
@@ -454,6 +457,7 @@ internal static class ObjectPoolHelper
 
         int newReserveCount = (int)((long)Unsafe.ByteOffset(ref startReserve, ref currentReserve) / Unsafe.SizeOf<ObjectWrapper>());
         Debug.Assert(newReserveCount == reserveCount);
+        Debug.Assert(newReserveCount <= reserve.Length);
         return newReserveCount;
     }
 
