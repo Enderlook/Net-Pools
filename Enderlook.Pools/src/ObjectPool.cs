@@ -8,8 +8,11 @@ namespace Enderlook.Pools;
 /// Represent a pool of objects.
 /// </summary>
 /// <typeparam name="T">Type of object to pool.</typeparam>
-public abstract class ObjectPool<T>
+public abstract class ObjectPool<T> : IReturnable<T>
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    void IReturnable<T>.Return(T element, bool state) => Return(element);
+
     /// <summary>
     /// Gets an approximate count of the objects stored in the pool.<br/>
     /// This value is not accurate and may be lower or higher than the actual count.<br/>
@@ -25,6 +28,15 @@ public abstract class ObjectPool<T>
     /// </summary>
     /// <returns>Rented element.</returns>
     public abstract T Rent();
+
+    /// <summary>
+    /// Rent an element from the pool.<br/>
+    /// If the pool is empty, instantiate a new element.<br/>
+    /// Implementors of this class can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+    /// </summary>
+    /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Lease<T> RentLease() => new(this, default, Rent());
 
     /// <summary>
     /// Return an element to the pool.<br/>

@@ -10,6 +10,7 @@
 - Fix error in `SafeExactLengthArrayPool<T>` and `SafeExactLengthArrayObjectPool<T>` produced when using the reserve and `T` was a value type.
 - Fix error when a non-shared pool exceeds its fixed reserve.
 - Fix `SafeObjectPool<T>` having a `true` default value in `IsReserveFixed` property.
+- Add `Lease<T>` type for using pattern of pools and add methods for using it.
 
 ## 0.4.0
 

@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Enderlook.Pools;
 
@@ -18,6 +19,17 @@ public abstract class ArrayObjectPool<T> : ObjectPool<T[]>
     /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.
     /// </summary>
     public abstract bool ShouldClearArrayOnReturnByDefault { get; }
+
+    /// <summary>
+    /// Rent an element from the pool.<br/>
+    /// If the pool is empty, instantiate a new element.<br/>
+    /// Implementors of this class can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+    /// </summary>
+    /// <param name="clearOnReturn"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+    /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+    /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Lease<T[]> RentLease(bool clearOnReturn) => new(this, clearOnReturn, Rent());
 
     /// <inheritdoc cref="ObjectPool{T}.Return(T)"/>
     /// <param name="clearArray"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>

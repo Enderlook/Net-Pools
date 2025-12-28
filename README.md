@@ -7,6 +7,11 @@ MyExpensiveType instance = ObjectPool<MyExpensiveType>.Shared.Rent();
 // [...]
 ObjectPool<MyExpensiveType>.Shared.Return(instance);
 
+// Or alternatively:
+using Lease<MyExpensiveType> lease = ObjectPool<MyExpensiveType>.Shared.RentLease();
+instance = lease.Value;
+// [...]
+
 public class MyExpensiveType
 {
     // [...]
@@ -19,6 +24,10 @@ Unlike other pool implementations, this one also support value types:
 MyExpensiveValueType instance = ObjectPool<MyExpensiveValueType>.Shared.Rent();
 // [...]
 ObjectPool<MyExpensiveValueType>.Shared.Return(instance);
+
+// Or alternatively:
+using Lease<MyExpensiveValueType> lease = ObjectPool<MyExpensiveValueType>.Shared.RentLease();
+// [...]
 
 public struct MyExpensiveValueType
 {
@@ -97,6 +106,14 @@ namespace Enderlook.Pools
         /// </summary>
         /// <returns>Rented element.</returns>
         public abstract T Rent();
+
+        /// <summary>
+        /// Rent an element from the pool.<br/>
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this class can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+        /// </summary>
+        /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+        public Lease<T> RentLease();
 
         /// <summary>
         /// Return an element to the pool.<br/>
@@ -248,6 +265,16 @@ namespace Enderlook.Pools
         public abstract bool ShouldClearArrayOnReturnByDefault { get; }
 
         /// <summary>
+        /// Rent an element from the pool.<br/>
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this class can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+        /// </summary>
+        /// <param name="clearOnReturn"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+        /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+        public Lease<T[]> RentLease(bool clearOnReturn);
+
+        /// <summary>
         /// Return an element to the pool.<br/>
         /// If the pool is full, it's an implementation detail whenever the object is free or the pool is resized.<br/>
         /// If <paramref name="element"/> is <see langword="default"/>, it's an implementation detail whenever it throws an exception or ignores the call. However, it should never leave the pool in an invalid state.
@@ -336,6 +363,26 @@ namespace Enderlook.Pools
         public static new ExactLengthArrayPool<T> Shared { get; }
 
         /// <summary>
+        /// Rent an element from the pool.<br/>
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+        /// </summary>
+        /// <param name="minimumLength">The minimum length of the array needed.</param>
+        /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+        public Lease<T[]> RentLease(int minimumLength);
+
+        /// <summary>
+        /// Rent an element from the pool.<br/>
+        /// If the pool is empty, instantiate a new element.<br/>
+        /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+        /// </summary>
+        /// <param name="minimumLength">The minimum length of the array needed.</param>
+        /// <param name="clearOnReturn"> If <see langword="true"/> and if the pool will store the buffer to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
+        /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
+        /// <returns>A contained of the rented element. When this container is disposed, the object will be returned to the pool.</returns>
+        public Lease<T[]> RentLease(int minimumLength, bool clearOnReturn);
+
+        /// <summary>
         /// Retrieves a shared <see cref="ObjectPool{T}"/> instance configured to create arrays of the specified length.<br/>
         /// The shared pool has the following features:
         /// <list type="bullet">
@@ -416,6 +463,37 @@ namespace Enderlook.Pools
         /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <returns>Wrapper of pool.</returns>
         public override SafeExactLengthArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false)
+    }
+
+    /// <summary>
+    /// Represent a pooled value.<br/>
+    /// When <see cref="IDisposable.Dispose"/> is executed, the value is returned to the pool.
+    /// </summary>
+    /// <remarks>This type doesn't provide any double-dipose, default value or use after dispose safety.<br/>
+    /// This is to ensure the highest performance of the type.<br/><br/>
+    /// Users must ensure:
+    /// <list type="bullet">
+    /// <item>The instance is disposed exactly once.</item>
+    /// <item>The field <see cref="Value"/> is not used after disposing.</item>
+    /// <item>The instance is always obtained from a pool rather than using <see langword="default"/> (<c>default(<see cref="Lease{T}"/>)</c>) or calling its parameterless constructor.</item>
+    /// <item>Treat the instance under move-semantics. This particularly important if <typeparamref name="T"/> is a mutable value type, as mutations in <see cref="Value"/> would differ between copies.</item>
+    /// </list>
+    /// </remarks>
+    /// <typeparam name="T">Type of value to pool.</typeparam>
+    public struct Lease<T> : IDisposable
+    {
+        /// <summary>
+        /// Value that is being rented.
+        /// </summary>
+        /// <remarks>This is a field so when <c>T</c> is a mutable value type it can be mutated.<br/>
+        /// However, it's not intended for users to replace the value with another one never.</remarks>
+        public T Value;
+
+        /// <summary>
+        /// Returns the value to the pool.
+        /// </summary>
+        /// <remarks>This method must be executed exactly once per instance.</remarks>
+        public readonly void Dispose();
     }
 }
 ```
