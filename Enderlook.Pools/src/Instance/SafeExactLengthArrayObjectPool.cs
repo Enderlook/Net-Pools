@@ -100,7 +100,7 @@ public sealed class SafeExactLengthArrayObjectPool<T> : ArrayObjectPool<T>
         init
         {
             if (value < 0) Utils.ThrowArgumentOutOfRangeException_ReserveCanNotBeNegative();
-            reserve = typeof(T).IsValueType ? new T[value] : new ObjectWrapper[value];
+            reserve = new ObjectWrapper[value];
         }
     }
 
