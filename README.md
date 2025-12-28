@@ -18,7 +18,7 @@ public class MyExpensiveType
 }
 ```
 
-Unlike other pool implementations, this one also support value types:
+Unlike other pool implementations, this one also supports value types:
 
 ```cs
 MyExpensiveValueType instance = ObjectPool<MyExpensiveValueType>.Shared.Rent();
@@ -50,7 +50,7 @@ Additionally, it provides a local (thread-safe) pool in case of not wanting to u
 ```cs
 // It supports to use a custom delegate or the parameterless constructor
 ObjectPool<MyExpensiveType> pool = new SafeObjectPool<MyExpensiveType>(() => CreateExpensiveType());
-ObjectPool<MyExpensiveValueType> pool = SafeObjectPool<MyExpensiveValueType>.CreateDefault(); // It's a separate method for better trimming support.
+ObjectPool<MyExpensiveValueType> pool = SafeObjectPool<MyExpensiveValueType>.CreateDefault(); // It's a separate method for better IL trimming support.
 ```
 
 You can configure this local pools to have custom or default constructors of the instances, to execute specific logic (such as disposing) when trimming objects, or to disable resizing of the pool.
@@ -462,7 +462,7 @@ namespace Enderlook.Pools
         /// <param name="clearArrayOnReturn"> If <see langword="true"/> and if the pool will store a buffer that is being returned to enable subsequent reuse, will clear the array of its contents so that a subsequent consumer will not see the previous consumer's content.<br/>
         /// If <see langword="false"/> or if the pool will release the buffer, the array's contents are left unchanged.</param>
         /// <returns>Wrapper of pool.</returns>
-        public override SafeExactLengthArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false)
+        public override SafeExactLengthArrayObjectPool<T> OfLength(int length, bool clearArrayOnReturn = false);
     }
 
     /// <summary>
