@@ -75,14 +75,14 @@ namespace Enderlook.Pools
 
         /// <summary>
         /// Retrieves a factory method that creates new instances of <typeparamref name="T"/> using its parameterless constructor.<br/>
-        /// If the paremterless constructor is not found, the delegate will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
+        /// If the parameterless constructor is not found, the delegate will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
         /// </summary>
         /// <remarks>This is quite similar to <see cref="Activator.CreateInstance{T}()"/>, but attempts to be more performant.</remarks>
         public static Func<T> Factory { get; }
 
         /// <summary>
         /// Creates a new instance of <typeparamref name="T"/> using its parameterless constructor.<br/>
-        /// If the paremterless constructor is not found, it will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
+        /// If the parameterless constructor is not found, it will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
         /// </summary>
         /// <remarks>This is quite similar to <see cref="Activator.CreateInstance{T}()"/>, but attempts to be more performant.</remarks>
         /// <returns>New instance of <typeparamref name="T"/>.</returns>
@@ -94,7 +94,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Gets an approximate count of the objects stored in the pool.<br/>
         /// This value is not accurate and may be lower or higher than the actual count.<br/>
-        /// This is primary used for debugging purposes.
+        /// This is primarily used for debugging purposes.
         /// </summary>
         /// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
         public abstract int ApproximateCount();
@@ -410,7 +410,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Gets an approximate count of the objects stored in the pool.<br/>
         /// This value is not accurate and may be lower or higher than the actual count.<br/>
-        /// This is primary used for debugging purposes.
+        /// This is primarily used for debugging purposes.
         /// </summary>
         /// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
         public abstract int ApproximateCount();

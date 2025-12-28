@@ -124,7 +124,7 @@ public abstract class ExactLengthArrayPool<T> : ArrayPool<T>, IReturnable<T[]>
     /// <summary>
     /// Gets an approximate count of the objects stored in the pool.<br/>
     /// This value is not accurate and may be lower or higher than the actual count.<br/>
-    /// This is primary used for debugging purposes.
+    /// This is primarily used for debugging purposes.
     /// </summary>
     /// <returns>Approximate count of elements in the pool. If this operation is not supported, return -1 instead of throwing.</returns>
     public abstract int ApproximateCount();

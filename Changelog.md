@@ -11,6 +11,7 @@
 - Fix error when a non-shared pool exceeds its fixed reserve.
 - Fix `SafeObjectPool<T>` having a `true` default value in `IsReserveFixed` property.
 - Add `Lease<T>` type for using pattern of pools and add methods for using it.
+- Fix documentation typos.
 
 ## 0.4.0
 
