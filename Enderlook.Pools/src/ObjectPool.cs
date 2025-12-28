@@ -24,7 +24,7 @@ public abstract class ObjectPool<T> : IReturnable<T>
     /// <summary>
     /// Rent an element from the pool.<br/>
     /// If the pool is empty, instantiate a new element.<br/>
-    /// Implementors of this interface can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
+    /// Implementors of this class can choose how elements are instantiated and initialized, or throw if instantiation of new elements is not supported.
     /// </summary>
     /// <returns>Rented element.</returns>
     public abstract T Rent();
