@@ -169,7 +169,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveFixed { get; init; } = true;
+        public bool IsReserveFixed { get; init; }
 
         /// <summary>
         /// Delegate which instantiates new objects.
@@ -224,7 +224,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveFixed { get; init; } = true;
+        public bool IsReserveFixed { get; init; }
 
         /// <summary>
         /// If this value is not <see langword="null"/>, the callback will be executed on each element which is free from the pool.<br/>
@@ -325,7 +325,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveFixed { get; init; } = true;
+        public bool IsReserveFixed { get; init; }
 
         /// <summary>
         /// Creates a pool of exact length array.
@@ -448,7 +448,7 @@ namespace Enderlook.Pools
         /// <summary>
         /// Determines if the reserve pool is not allowed to grow nor shrink given its usage.
         /// </summary>
-        public bool IsReserveFixed { get; init; } = true;
+        public bool IsReserveFixed { get; init; }
 
         /// <summary>
         /// Creates a new instance of the pool.
