@@ -197,7 +197,7 @@ namespace Enderlook.Pools
     /// This pool can be configured to automatically call <see cref="IDisposable"/> of elements that are free (for example during trimming, when pool is full or when the pool is disposed itself).
     /// </summary>
     /// <typeparam name="T">Type of object to pool</typeparam>
-    public sealed class SafeObjectPool<T> : ObjectPool<T>
+    public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
     {
         #region Extension members from SafeObjectPool. Has [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 

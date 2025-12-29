@@ -11,7 +11,7 @@ namespace Enderlook.Pools;
 /// This pool can be configured to automatically call <see cref="IDisposable"/> of elements that are free (for example during trimming, when pool is full or when the pool is disposed itself).
 /// </summary>
 /// <typeparam name="T">Type of object to pool</typeparam>
-public sealed class SafeObjectPool<T> : ObjectPool<T>
+public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
 {
     /// <summary>
     /// Delegate that instantiates new object.
@@ -148,15 +148,19 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
                 GC.SuppressFinalize(this);
 #pragma warning restore CA1816 // Dispose methods should call SuppressFinalize
             }
-            else if (ReferenceEquals(value, Disposing<T>.DisposeAction))
-            {
-                freeCallback = null;
-                disposeMode = Disposing<T>.DisposableMode;
-            }
             else
             {
-                freeCallback = value;
-                disposeMode = Disposing<T>.HAS_CUSTOM_DISPOSING;
+                GC.ReRegisterForFinalize(this);
+                if (ReferenceEquals(value, Disposing<T>.DisposeAction))
+                {
+                    freeCallback = null;
+                    disposeMode = Disposing<T>.DisposableMode;
+                }
+                else
+                {
+                    freeCallback = value;
+                    disposeMode = Disposing<T>.HAS_CUSTOM_DISPOSING;
+                }
             }
         }
     }
@@ -198,13 +202,21 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>
             array = new ObjectWrapper[arrayLength];
         }
         GCCallbackObject<T> _ = new(this);
+        if (disposeMode is Disposing<T>.CAN_NOT_IMPLEMENT_IDISPOSABLE)
+            GC.SuppressFinalize(this);
     }
 
     /// <summary>
     /// Calls the <see cref="IDisposable.Dispose"/> of all the pooled elements.
     /// </summary>
-    ~SafeObjectPool()
+    ~SafeObjectPool() => Dispose();
+
+    /// <summary>
+    /// Calls the <see cref="IDisposable.Dispose"/> of all the pooled elements.
+    /// </summary>
+    public void Dispose()
     {
+        GC.SuppressFinalize(this);
         if (disposeMode is Disposing<T>.NULL_CUSTOM_DISPOSING or Disposing<T>.CAN_NOT_IMPLEMENT_IDISPOSABLE)
             return;
         Trim(true);

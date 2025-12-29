@@ -2,6 +2,8 @@
 
 ## WIP
 
+## 0.5.0
+
 - Rework array pools to support configuring clearing policy at its construction:
   - Create `ArrayObjectPool<T>` and make `SafeExactLengthArrayObjectPool<T>` inherit from it.
   - Modify constructor `SafeExactLengthArrayObjectPool(int length)` to `SafeExactLengthArrayObjectPool(int length, bool shouldClearArrayOnReturnByDefault = false)`.
@@ -13,7 +15,7 @@
 - Add `Lease<T>` type for using pattern of pools and add methods for using it.
 - Fix documentation typos.
 - Add extension property `ObjectPool<T>.SupportsInstantiation`.
-- Add extension property `ObjectPool<T>.SupportInstantiation`.
+- Implements `IDisposable` in `SafeObjectPool<T>` and tries to avoid calling the finaliser when it's not required.
 
 ## 0.4.0
 
