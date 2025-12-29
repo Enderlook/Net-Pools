@@ -12,6 +12,8 @@
 - Fix `SafeObjectPool<T>` having a `true` default value in `IsReserveFixed` property.
 - Add `Lease<T>` type for using pattern of pools and add methods for using it.
 - Fix documentation typos.
+- Add extension property `ObjectPool<T>.SupportsInstantiation`.
+- Add extension property `ObjectPool<T>.SupportInstantiation`.
 
 ## 0.4.0
 

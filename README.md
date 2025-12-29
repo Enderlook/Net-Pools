@@ -74,6 +74,13 @@ namespace Enderlook.Pools
         public static ObjectPool<T> Shared { get; }
 
         /// <summary>
+        /// Gets a value indicating whether instantiation of the specific element type <typeparamref name="T"/> is supported.<br/>
+        /// Reference types without a public parameterless constructor are not supported.<br/>
+        /// Is this value is <see langword="true"/>, then <see cref="get_Factory{T}"/> and <see cref="CreateInstance{T}"/> will create instances when used. If <see langword="false"/>, they will throw <see cref="MissingMethodException"/> instead.
+        /// </summary>
+        public static bool SupportsInstantiation { get; }
+
+        /// <summary>
         /// Retrieves a factory method that creates new instances of <typeparamref name="T"/> using its parameterless constructor.<br/>
         /// If the parameterless constructor is not found, the delegate will instead throw when executed for a reference type, or use <see langword="default"/> for value type.
         /// </summary>
@@ -86,7 +93,7 @@ namespace Enderlook.Pools
         /// </summary>
         /// <remarks>This is quite similar to <see cref="Activator.CreateInstance{T}()"/>, but attempts to be more performant.</remarks>
         /// <returns>New instance of <typeparamref name="T"/>.</returns>
-        /// <exception cref="MissingMethodException">Thrown when the <typeparamref name="T"/> is a reference type and has no public parameterless constructor.</exception>
+        /// <exception cref="MissingMethodException">Thrown when the <typeparamref name="T"/> is a reference type and has no public parameterless constructor, or in other words, when <see cref="get_SupportsInstantiation{T}"/> is <see langword="false"/>.</exception>
         public static T CreateInstance();
 
         #endregion

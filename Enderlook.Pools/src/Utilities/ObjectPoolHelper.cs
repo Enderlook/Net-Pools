@@ -13,12 +13,15 @@ internal static class ObjectPoolHelper<
 #endif
 T>
 {
+    public static readonly bool IsSupported;
     public static readonly Func<T> Factory;
     private static readonly bool useDefault;
 
     static ObjectPoolHelper()
     {
         // TODO: In .NET 7 Activator.CreateFactory<T>() may be added https://github.com/dotnet/runtime/issues/36194.
+
+        IsSupported = true;
 
         ConstructorInfo? constructor = typeof(T).GetConstructor(Type.EmptyTypes);
         if (constructor is null)
@@ -29,7 +32,10 @@ T>
                 Factory = () => default!;
             }
             else
+            {
+                IsSupported = false;
                 Factory = () => throw new MissingMethodException($"No public parameterless constructor defined for a reference type '{typeof(T)}'.");
+            }
             return;
         }
 
