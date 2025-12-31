@@ -31,7 +31,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 
     /// <summary>
     /// A dynamic-size stack reserve of objects.<br/>
-    /// When <see cref="array"/> get fulls, the first half of it is emptied and its element are moved here.<br/>
+    /// When <see cref="array"/> gets full, the first half of it is emptied and its element are moved here.<br/>
     /// When <see cref="array"/> gets empty, the first half of it is fulled with elements from this reserve.<br/>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.<br/>
     /// However, those operations only moves the first half of the array to prevent a point where this is executed on each rent or return.
@@ -135,7 +135,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
     {
         // First, we examine the first element.
         // If that fails, we look at the remaining elements.
-        // Note that intitial read are optimistically not synchronized. This is intentional.
+        // Note that initial read are optimistically not synchronized. This is intentional.
         // We will interlock only when we have a candidate.
         // In a worst case we may miss some recently returned objects.
         T? element = firstElement;
@@ -147,7 +147,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
             ref ObjectWrapper end = ref Unsafe.Add(ref current, items.Length);
             while (Unsafe.IsAddressLessThan(ref current, ref end))
             {
-                // Note that intitial read are optimistically not synchronized. This is intentional.
+                // Note that initial read are optimistically not synchronized. This is intentional.
                 // We will interlock only when we have a candidate.
                 // In a worst case we may miss some recently returned objects.
                 Debug.Assert(current.Value is null or T);
@@ -391,7 +391,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
             ref ObjectWrapper endItem = ref Unsafe.Add(ref currentItem, Math.Min(oldReserveCount - 1, items.Length / 2));
             while (Unsafe.IsAddressLessThan(ref currentItem, ref endItem))
             {
-                // Note that intitial read and write are optimistically not synchronized. This is intentional.
+                // Note that initial read and write are optimistically not synchronized. This is intentional.
                 // In a worst case we may miss some recently returned objects or accidentally free objects.
                 if (currentItem.Value is null)
                 {

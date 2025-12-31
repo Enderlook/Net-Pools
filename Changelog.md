@@ -2,6 +2,8 @@
 
 ## WIP
 
+- Fix documentation typos and improve it.
+
 ## v0.5.0
 
 - Rework array pools to support configuring clearing policy at its construction:

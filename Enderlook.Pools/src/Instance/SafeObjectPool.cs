@@ -38,7 +38,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
 
     /// <summary>
     /// A dynamic-size stack reserve of objects.<br/>
-    /// When <see cref="array"/> get fulls, the first half of it is emptied and its element are moved here.<br/>
+    /// When <see cref="array"/> gets full, the first half of it is emptied and its element are moved here.<br/>
     /// When <see cref="array"/> gets empty, the first half of it is fulled with elements from this reserve.<br/>
     /// Those operations are done in a batch to reduce the amount of times this requires to be acceded.<br/>
     /// However, those operations only moves the first half of the array to prevent a point where this is executed on each rent or return.
@@ -68,7 +68,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
     /// <exception cref="ArgumentOutOfRangeException">Throw when <see langword="value"/> is lower than <c>1</c>.</exception>
     public int Capacity
     {
-        get => GetArrayLenght() + 1;
+        get => GetArrayLength() + 1;
         init
         {
             if (value < 1) Utils.ThrowArgumentOutOfRangeException_CapacityCanNotBeLowerThanOne();
@@ -281,7 +281,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
     {
         // First, we examine the first element.
         // If that fails, we look at the remaining elements.
-        // Note that intitial read are optimistically not synchronized. This is intentional.
+        // Note that initial read are optimistically not synchronized. This is intentional.
         // We will interlock only when we have a candidate.
         // In a worst case we may miss some recently returned objects.
         if (typeof(T).IsValueType)
@@ -323,7 +323,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
                     ref ValueMutex<T> end = ref Unsafe.Add(ref current, items.Length);
                     while (Unsafe.IsAddressLessThan(ref current, ref end))
                     {
-                        // Note that intitial read are optimistically not synchronized. This is intentional.
+                        // Note that initial read are optimistically not synchronized. This is intentional.
                         // We will interlock only when we have a candidate.
                         // In a worst case we may miss some recently returned objects.
                         if (current.NotSynchronizedHasValue && current.TryPopValue(out value))
@@ -408,7 +408,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
                     ref ValueMutex<T> end = ref Unsafe.Add(ref current, items.Length);
                     while (Unsafe.IsAddressLessThan(ref current, ref end))
                     {
-                        // Intentionally we first check if there is an element to avoid unecessary locking.
+                        // Intentionally we first check if there is an element to avoid unnecessary locking.
                         if (!current.NotSynchronizedHasValue && current.TrySetValue(ref element))
                             return;
                         current = ref Unsafe.Add(ref current, 1);
@@ -477,7 +477,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
             firstElementNotAtomic.Clear(); // We always trim the first element.
         }
 
-        int itemsLength = GetArrayLenght();
+        int itemsLength = GetArrayLength();
 
         int arrayTrimMilliseconds;
         int arrayTrimCount;
@@ -679,7 +679,7 @@ public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int GetArrayLenght()
+    private int GetArrayLength()
     {
         if (typeof(T).IsValueType)
         {
