@@ -10,6 +10,7 @@ namespace Enderlook.Pools;
 /// A lightweight, fast, dynamically-sized and thread-safe object pool to store objects.<br/>
 /// The pool is designed for fast rent and return of elements, so during multithreading scenarios it may accidentally free unnecessary objects during return (however, this is not a fatal error for the pool).
 /// </summary>
+/// <seealso cref="FastObjectPool"/>
 /// <typeparam name="T">Type of object to pool</typeparam>
 public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 {

@@ -7,6 +7,7 @@ namespace Enderlook.Pools;
 /// <summary>
 /// Represent a pool of objects.
 /// </summary>
+/// <seealso cref="ObjectPool"/>
 /// <typeparam name="T">Type of object to pool.</typeparam>
 public abstract class ObjectPool<T> : IReturnable<T>
 {

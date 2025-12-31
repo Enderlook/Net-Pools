@@ -10,6 +10,7 @@ namespace Enderlook.Pools;
 /// A fast, dynamically-sized and thread-safe object pool to store objects.<br/>
 /// This pool can be configured to automatically call <see cref="IDisposable"/> of elements that are free (for example during trimming, when pool is full or when the pool is disposed itself).
 /// </summary>
+/// <seealso cref="SafeObjectPool"/>
 /// <typeparam name="T">Type of object to pool</typeparam>
 public sealed class SafeObjectPool<T> : ObjectPool<T>, IDisposable
 {
