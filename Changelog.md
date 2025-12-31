@@ -2,7 +2,7 @@
 
 ## WIP
 
-## 0.5.0
+## v0.5.0
 
 - Rework array pools to support configuring clearing policy at its construction:
   - Create `ArrayObjectPool<T>` and make `SafeExactLengthArrayObjectPool<T>` inherit from it.
@@ -17,7 +17,7 @@
 - Add extension property `ObjectPool<T>.SupportsInstantiation`.
 - Implements `IDisposable` in `SafeObjectPool<T>` and tries to avoid calling the finaliser when it's not required.
 
-## 0.4.0
+## v0.4.0
 
 - Reduce generic instantiations internally produced by `ExactLengthArrayPool<T>.Shared` and `ExactLengthArrayPool<T>.SharedOfLength(int)`.
 - Fix error in `ExactLengthArrayPool<T>.Shared.ApproximateCount()` and `ExactLengthArrayPool<T>.Shared.Trim(bool)`.
