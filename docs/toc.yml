@@ -1,0 +1,10 @@
+- name: Introduction
+  href: introduction.md
+- name: ObjectPool<T>.Shared
+  href: shared-object-pool.md
+- name: ObjectPool<T>
+  href: object-pool.md
+- name: ExactLengthArrayPool<T>.Shared
+  href: shared-exact-length-array-pool.md
+- name: ExactLengthArrayPool<T>
+  href: exact-length-array-pool.md
