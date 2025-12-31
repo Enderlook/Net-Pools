@@ -450,7 +450,7 @@ public sealed class FastObjectPool<T> : ObjectPool<T> where T : class
 }
 
 /// <summary>
-/// Utility methods for <see cref="FastObjectPool{T}"/>
+/// Utility methods for <see cref="FastObjectPool{T}"/>.
 /// </summary>
 public static class FastObjectPool
 {
